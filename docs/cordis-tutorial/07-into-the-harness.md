@@ -100,6 +100,7 @@ A real agent is this composition plus more plugins: an LLM adapter, the agent lo
 
 Where to go next:
 
+- [Reading the harness](../user/develop/practice/reading-the-harness.md) — an ordered source-reading path through one turn, the five core packages, and composition.
 - [Build a tool](../user/develop/basic/tool.md) — more of `defineTool`, including presentation and richer schemas.
 - [Three-layer capability design](../user/develop/practice/index.md) — how the harness structures replaceable capabilities.
 - The generated `cordis-surface` regions on the [subsystem pages](../subsystems/core.md) — everything you can inject and listen to, each on its owning page.

@@ -152,4 +152,5 @@ export function apply(ctx: Context) {
 
 ## Next steps
 
+- [Reading the harness](./reading-the-harness.md) — an ordered source-reading path through one turn and the core packages
 - [LLM adapter](./llm-adapter.md) — implement an LLM provider

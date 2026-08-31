@@ -1291,7 +1291,7 @@ function renderEventRelations(pkgs: Pkg[], events: readonly EventEntry[]): strin
 }
 
 function renderLifecycle(): string {
-  const maintenance = 'curated Mermaid sequence; exact event signatures live in the generated Cordis catalog'
+  const maintenance = 'curated Mermaid sequence and source-mapped walkthrough; exact event signatures live in the generated Cordis catalog'
   return [
     ...generatedHeader('Agent Turn And Step Lifecycle'),
     'This sequence is the visual companion to [architecture.md](architecture.md#turn-flow). It keeps durable replay facts on `session/event` and live control/status on `agent/*`.',
@@ -1370,12 +1370,19 @@ function renderLifecycle(): string {
     '',
     'SDK users that need replayable transcript data should consume `session/event`; `agent/*` is the live coordination API for queue/status, prompt interception, request construction, steering, continuation, and errors.',
     '',
+    ...LIFECYCLE_WALKTHROUGH,
     ...maintenanceFooter(maintenance),
   ].join('\n')
 }
 
+/** Source-mapped walkthrough of the curated sequence; edit `scripts/agent-lifecycle-walkthrough.md`, not `docs/agent-lifecycle.md`. */
+const LIFECYCLE_WALKTHROUGH: string[] = readFileSync(
+  resolve(root, 'scripts/agent-lifecycle-walkthrough.md'),
+  'utf8',
+).split('\n')
+
 function renderToolPipeline(): string {
-  const maintenance = 'curated Mermaid flow; exact tool schemas and event signatures live in generated catalogs'
+  const maintenance = 'curated Mermaid flow and source-mapped walkthrough; exact tool schemas and event signatures live in generated catalogs'
   return [
     ...generatedHeader('Tool Execution Pipeline'),
     'This graph shows where policy, hooks, sandboxing, filesystem guards, result rewriting, final-outcome observation, and UI rendering run without changing the loop. The `tools/pre-execute` waterfall runs first, monotonic guards run next, and the `tools/execute` and `tools/post-execute` waterfalls follow; the three waterfalls may transform a call. Definition-owned `finalizeContent` and `tools/result` run afterward.',
@@ -1434,9 +1441,19 @@ function renderToolPipeline(): string {
     '',
     'Filesystem read-before-edit checks stay below `tool-fs` on `fs/*` events. Generic pre/post waterfalls host hooks and approval policy; `ctx.approval` resolves asks before monotonic guards, and owner policy that must not be reordered remains a registered guard. Around-dispatch concerns such as timeouts wrap `tools/execute`. The registry losslessly snapshots the candidate result and normalizes a snapshot failure before the visible definition\'s snapshotted `finalizeContent` callback enforces its synchronous content-only invariant. `tools/result` then observes the immutable, lossless-JSON outcome. This lets hooks span tool families without coupling the tools to one policy service. PTC mode sends both the reserved `run_code` transport and its serialized sub-calls through the pipeline; sub-calls carry the parent token, log `tool/code-dispatch`, return denials as binding rejections, and omit `additionalContexts` to preserve call/result adjacency.',
     '',
+    ...PIPELINE_WALKTHROUGH,
     ...maintenanceFooter(maintenance),
   ].join('\n')
 }
+
+/**
+ * Source-mapped walkthrough of the curated tool pipeline.
+ * Edit `scripts/tool-execution-pipeline-walkthrough.md`, not `docs/tool-execution-pipeline.md`.
+ */
+const PIPELINE_WALKTHROUGH: string[] = readFileSync(
+  resolve(root, 'scripts/tool-execution-pipeline-walkthrough.md'),
+  'utf8',
+).split('\n')
 
 function renderDocs(): GraphDoc[] {
   const pkgs = collectPackageGraph(root, GROUP_ORDER, 'gen-doc-graphs')

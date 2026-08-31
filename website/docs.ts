@@ -248,6 +248,14 @@ const develop = pairedPages([
     section: { root: '实战', en: 'Practice' },
     order: 3,
   },
+  {
+    source: 'docs/user/develop/practice/reading-the-harness.md',
+    route: 'develop/practice/reading-the-harness.md',
+    label: { root: '阅读 harness', en: 'Reading the harness' },
+    sidebar: { root: 'zh-develop', en: 'en-develop' },
+    section: { root: '实战', en: 'Practice' },
+    order: 4,
+  },
 ])
 
 const cordisTutorial = pairedPages(([

@@ -152,4 +152,5 @@ export function apply(ctx: Context) {
 
 ## 下一步
 
+- [阅读 harness](./reading-the-harness.zh.md)：按一次轮次和核心包顺序阅读源码
 - [LLM（大语言模型）适配器](./llm-adapter.zh.md)：实现一个 LLM 提供方
