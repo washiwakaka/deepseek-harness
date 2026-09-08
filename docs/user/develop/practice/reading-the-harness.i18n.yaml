@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/develop/practice/reading-the-harness.md
-reading-the-harness.md: 5795345405def44575dbc83b75aef802a8cb7e3a
-reading-the-harness.zh.md: 3e62288449f53d1b5f211ab7d966cbf60bc022f0
+reading-the-harness.md: bbb7e78fd291e02714a8afc36c064ebee9d00c94
+reading-the-harness.zh.md: fa55c90dbe00198a059b61f9f86745fbfab859e2

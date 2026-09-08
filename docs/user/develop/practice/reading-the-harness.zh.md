@@ -14,7 +14,7 @@
 
 - 指出 [`packages/core/agent-loop/src/agent.ts`](../../../../packages/core/agent-loop/src/agent.ts) 中的 `kick`、`turn`、`preStep` 和 `step`，并说明各自追加或派发了什么。
 - 区分持久会话事件（`turn/start`、`tool/result`）与实时扩展点（`agent/pre-step`、`tools/result`）。
-- 把 [`examples/headless-agent/cordis.yml`](../../../../examples/headless-agent/cordis.yml) 中的一行对应到某个 `ctx` 键，包括只因 [`agent-spine-demo`](../../../../packages/examples/agent-spine-demo/src/index.ts) 挂载才出现的行。
+- 把 [`dsh-base`](../../../../packages/bundle/base/cordis.patch.yml) 或 [`dsh-headless`](../../../../packages/bundle/headless/cordis.patch.yml) 中的一行对应到某个 `ctx` 键，包括 headless patch 只重述或插入的行。
 
 ## 三层结构
 
@@ -77,7 +77,7 @@ Harness 由三层叠成。Cordis 是插件运行时：`inject`、effect 和事�
 
 ## 组合
 
-[`examples/headless-agent/cordis.yml`](../../../../examples/headless-agent/cordis.yml) 看起来很短，是因为 `@deepseek-ai/dsh-agent-spine-demo` 把主干作为子插件挂载：会话存储、工具、agent loop（智能体循环）、bash 消费方等。叶子 YAML 只点名可替换提供方和额外消费方：LLM（大语言模型）适配器、bash 执行器、文件系统、持久化、subagent。
+[`dsh --profile headless`](../../../../packages/bundle/headless/README.zh.md) 先叠 [`dsh-base`](../../../../packages/bundle/base/cordis.patch.yml)，再叠 [`dsh-headless`](../../../../packages/bundle/headless/cordis.patch.yml)。base patch 插入共享产品树：会话存储、工具、agent loop（智能体循环）、bash 消费方等。headless patch 重述其中若干行，并插入一次性运行器。
 
 导出扁平后的配置树：
 
@@ -91,7 +91,7 @@ pnpm dsh --profile headless --dump-config
 
 ## 练习
 
-**A. 摊平组合（无需 API 密钥）。** 运行 `--dump-config`，把打印出的每个 id 标到 [architecture.zh.md](../../../architecture.zh.md) 的核心包表上。找出哪些行来自 `agent-spine-demo` 而不是叶子 YAML。
+**A. 摊平组合（无需 API 密钥）。** 运行 `--dump-config`，把打印出的每个 id 标到 [architecture.zh.md](../../../architecture.zh.md) 的核心包表上。找出哪些行来自 `dsh-base`，哪些由 headless patch 重述或插入。
 
 **B. 让模型调用 `greet`。** 去掉第 7 章工具里自行调用 `ctx.tools.execute` 的代码块，再按[第一个 Harness 插件](../basic/index.zh.md)或 headless 组合的副本加载它，步骤见[开发一个工具](../basic/tool.zh.md)。
 

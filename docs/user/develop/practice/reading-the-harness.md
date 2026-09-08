@@ -14,7 +14,7 @@ You can do all of the following without looking up the architecture page:
 
 - Point at `kick`, `turn`, `preStep`, and `step` in [`packages/core/agent-loop/src/agent.ts`](../../../../packages/core/agent-loop/src/agent.ts) and say what each appends or dispatches.
 - Distinguish durable session events (`turn/start`, `tool/result`) from live extension points (`agent/pre-step`, `tools/result`).
-- Map a row in [`examples/headless-agent/cordis.yml`](../../../../examples/headless-agent/cordis.yml) to a `ctx` key, including rows that exist only because [`agent-spine-demo`](../../../../packages/examples/agent-spine-demo/src/index.ts) mounts them.
+- Map a row in [`dsh-base`](../../../../packages/bundle/base/cordis.patch.yml) or [`dsh-headless`](../../../../packages/bundle/headless/cordis.patch.yml) to a `ctx` key, including rows that the headless patch only restates or inserts.
 
 ## Three layers
 
@@ -77,7 +77,7 @@ For each package, read the opening of its README, the service class in `src/inde
 
 ## Composition
 
-[`examples/headless-agent/cordis.yml`](../../../../examples/headless-agent/cordis.yml) looks short because `@deepseek-ai/dsh-agent-spine-demo` mounts the spine as child plugins: session store, tools, agent loop, bash consumer, and others. The leaf YAML only names replaceable providers and extra consumers: the LLM adapter, bash executor, filesystem, persistence, subagent.
+[`dsh --profile headless`](../../../../packages/bundle/headless/README.md) stacks [`dsh-base`](../../../../packages/bundle/base/cordis.patch.yml) then [`dsh-headless`](../../../../packages/bundle/headless/cordis.patch.yml). The base patch inserts the shared product tree: session store, tools, agent loop, bash consumer, and others. The headless patch restates a few of those rows and inserts the one-shot runner.
 
 Dump the flattened tree:
 
@@ -91,7 +91,7 @@ The `packages/session/` group — persistence, projection, title, telemetry — 
 
 ## Exercises
 
-**A. Flatten composition (no API key).** Run `--dump-config` and mark each printed id on the core-package table in [architecture.md](../../../architecture.md). Find which rows come from `agent-spine-demo` rather than the leaf YAML.
+**A. Flatten composition (no API key).** Run `--dump-config` and mark each printed id on the core-package table in [architecture.md](../../../architecture.md). Find which rows come from `dsh-base` and which the headless patch restates or inserts.
 
 **B. Let the model call `greet`.** Remove the self-`ctx.tools.execute` block from chapter 7's tool and load it through [your first Harness plugin](../basic/index.md) or a copy of the headless composition, following [Build a tool](../basic/tool.md).
 
