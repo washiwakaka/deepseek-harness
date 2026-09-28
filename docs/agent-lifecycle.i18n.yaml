@@ -1,6 +1,88 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for agent-lifecycle.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/agent-lifecycle.md
-agent-lifecycle.md: a0c1abe1f9084c1b6f3763c8314c5efb49042ec5
-agent-lifecycle.zh.md: 39cad033fd458eca66c2404c11133997deacfa10
+/:
+  en: 41d772192075e133
+  zh: 308a5aece294f9c5
+/agent-turn-and-step-lifecycle:
+  en: 732348481ef7a25b
+  zh: 4134e383e9e73349
+/agent-turn-and-step-lifecycle/reading-the-sequence:
+  en: 594dfaea0addf185
+  zh: e0ceb2757c8ee891
+/agent-turn-and-step-lifecycle/stage-0-the-message-enters-the-inbox-and-wakes-the-driver:
+  en: c9c050d3a9a27f69
+  zh: 590648b012188856
+/agent-turn-and-step-lifecycle/stage-1-open-the-turn-and-claim-from-the-inbox:
+  en: 87f43959bd8e0766
+  zh: 7ee11663449f2f43
+/agent-turn-and-step-lifecycle/stage-2-agent-pre-step-whether-this-step-may-reach-the-model:
+  en: d5b3e016aa4d5c24
+  zh: c88daee262360a25
+/agent-turn-and-step-lifecycle/stage-3-start-the-step-persist-user-messages-call-the-model:
+  en: de468ba336b609a6
+  zh: a380676c0afc138f
+/agent-turn-and-step-lifecycle/stage-3-start-the-step-persist-user-messages-call-the-model/diagram-vs-source-system-prompt-assemble:
+  en: ad27335a5708fec7
+  zh: ae878e92c5013d88
+/agent-turn-and-step-lifecycle/stage-4-model-request-failure-vs-success:
+  en: 7e2d2a71d23923c9
+  zh: 534c8f7d17a88a7d
+/agent-turn-and-step-lifecycle/stage-4-model-request-failure-vs-success/diagram-vs-source-agent-request-error:
+  en: 2b9540ac308c4ee2
+  zh: 02e97b6d2c62fe64
+/agent-turn-and-step-lifecycle/stage-5-the-tool-loop-inside-the-same-step:
+  en: a28ba3318a8edb46
+  zh: a3ab82522638e3d5
+/agent-turn-and-step-lifecycle/stage-6-close-the-step-and-decide-whether-to-take-another:
+  en: 62d5d7d2aa9949a6
+  zh: 49146c0b4e693097
+/agent-turn-and-step-lifecycle/stage-7-close-the-turn-and-idle-the-driver:
+  en: 720e5efc4b91c380
+  zh: 7895376bf7afe04e
+/agent-turn-and-step-lifecycle/control-flow-summary:
+  en: 2e52713c2137aee3
+  zh: 1d4af19ad962d5c1
+/agent-turn-and-step-lifecycle/two-concrete-traces:
+  en: 60030578b156fcb2
+  zh: 53776ad310c97ff3
+/agent-turn-and-step-lifecycle/durable-vs-live-names:
+  en: b0ab2a1169b3cc00
+  zh: 1164f5f7da455b69
+/agent-turn-and-step-lifecycle/durable-vs-live-names/durable-session-events:
+  en: cec50caeef27bd70
+  zh: c6bd925f760b41e7
+/agent-turn-and-step-lifecycle/durable-vs-live-names/live-extension-points:
+  en: 6dd1934dab788ca7
+  zh: adddc9fff61a1b44
+/agent-turn-and-step-lifecycle/durable-vs-live-names/two-pairs-that-look-alike:
+  en: 808eb1b90d79804c
+  zh: 8cf8ac2cf0739434
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle:
+  en: 5fa315d9b1a01d20
+  zh: 8248aa86d960c5b5
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/stage-0-enqueue-and-wake-send-wakedriver-kick:
+  en: 54662ebfa8221f0a
+  zh: 7112461cf534e278
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/stages-1-2-open-the-turn-claim-agent-pre-step-turn-prestep:
+  en: 8683db70bfd8071f
+  zh: 7a776846365127dd
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/stage-3-enter-the-step-persist-user-messages-call-the-model:
+  en: 233bbac57b5cfb49
+  zh: a90534b778874ecc
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/stage-4-failure-versus-success-inner-step-loop:
+  en: a16e52b841f921e0
+  zh: c99835871be05d93
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/stage-5-tools-still-inside-this-step:
+  en: ff406bc2124becf9
+  zh: 1eba542ee1ed8da7
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/stages-6-7-close-the-step-maybe-another-step-close-the-turn:
+  en: d6cca331dfcebf6d
+  zh: 0b56c5c40660d795
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/methods-the-sequence-does-not-draw:
+  en: 76b42c9d095b187a
+  zh: 8a19c538ce917d3b
+/agent-turn-and-step-lifecycle/reading-agent-ts-against-the-lifecycle/file-order:
+  en: 7afed3abf58143d5
+  zh: 560c9a35b8598d80

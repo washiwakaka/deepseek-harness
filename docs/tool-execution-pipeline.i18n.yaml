@@ -1,6 +1,76 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for tool-execution-pipeline.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/tool-execution-pipeline.md
-tool-execution-pipeline.md: efc41769886bc1171cb4d7ec28b73e7228ffda0d
-tool-execution-pipeline.zh.md: acddb0c9f00bd728d3fa21827046860fd71a8130
+/:
+  en: 41d772192075e133
+  zh: dfa4153f8a91837c
+/tool-execution-pipeline:
+  en: 545897da346170bd
+  zh: 1f81c5bbac578a89
+/tool-execution-pipeline/reading-the-pipeline:
+  en: 880be928b8d5aec0
+  zh: df61af58104e499e
+/tool-execution-pipeline/from-the-model-to-about-to-execute:
+  en: e193bb71c877412e
+  zh: cf07d0594be4e9df
+/tool-execution-pipeline/tools-pre-execute:
+  en: 4f968e618ab07cb7
+  zh: cba580affb3c2537
+/tool-execution-pipeline/ctx-approval:
+  en: d7a876b8d594b152
+  zh: eb80f72ef73186af
+/tool-execution-pipeline/monotonic-guards:
+  en: e316acdbcf5f002e
+  zh: 95b866bd516e8742
+/tool-execution-pipeline/denied:
+  en: eb6d35226fe713d2
+  zh: 5aaea334d752ec41
+/tool-execution-pipeline/tools-execute:
+  en: 78799dc5053bfe3f
+  zh: 05112371b3df2c50
+/tool-execution-pipeline/tool-body-filesystem-intents-and-tool-owned-events:
+  en: b0ad0c8136020db4
+  zh: 7db4ebbd2a6774e7
+/tool-execution-pipeline/tools-post-execute:
+  en: 7818a3be43046596
+  zh: ef3cfd7b12d9468f
+/tool-execution-pipeline/normalized:
+  en: bb1aae77a12636dc
+  zh: 7516e791aa703f7b
+/tool-execution-pipeline/finalizecontent:
+  en: a2ba66f441710ee0
+  zh: 482a6796e0bbb25e
+/tool-execution-pipeline/tools-result-vs-tool-result:
+  en: 5b4f4f987862d783
+  zh: d015d5a49c5e5499
+/tool-execution-pipeline/after-the-batch-additionalcontexts:
+  en: 059626a98cc27533
+  zh: 42fbc4f7ddf33eef
+/tool-execution-pipeline/the-shortest-happy-path:
+  en: fe2147313baf5e50
+  zh: 64afff9f6d00916e
+/tool-execution-pipeline/reading-tool-calls-ts:
+  en: d00376fd35b6987a
+  zh: 225699a445edcff3
+/tool-execution-pipeline/reading-tool-calls-ts/outer-loop-executetoolcalls-cuts-groups-at-barriers:
+  en: 995772426f424ec9
+  zh: 3bc537bdb0bbb73b
+/tool-execution-pipeline/reading-tool-calls-ts/inner-loop-rungroup-is-a-rolling-pool-plus-ordered-commit:
+  en: 9558c393297717a2
+  zh: 904c1e29e2f387e0
+/tool-execution-pipeline/reading-tool-calls-ts/inner-loop-rungroup-is-a-rolling-pool-plus-ordered-commit/startcall:
+  en: 8623be869a0b0e21
+  zh: 107e3f12dc68ae42
+/tool-execution-pipeline/reading-tool-calls-ts/inner-loop-rungroup-is-a-rolling-pool-plus-ordered-commit/fillpool:
+  en: 9a7117421b584b03
+  zh: 16494c06c177b8b1
+/tool-execution-pipeline/reading-tool-calls-ts/inner-loop-rungroup-is-a-rolling-pool-plus-ordered-commit/commitready:
+  en: b4ca6d3a68342a93
+  zh: ff476a06f5ef9c4d
+/tool-execution-pipeline/reading-tool-calls-ts/two-exits-abort-versus-scheduler-failure:
+  en: 6f850da62bb2070f
+  zh: f3596a43896dae67
+/tool-execution-pipeline/reading-tool-calls-ts/file-order:
+  en: 65964a6b5f677853
+  zh: 34db8d53c6f8be81
