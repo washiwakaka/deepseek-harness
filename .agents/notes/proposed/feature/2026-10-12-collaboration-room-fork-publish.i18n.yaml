@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for 2026-10-12-collaboration-room-fork-publish.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-12-collaboration-room-fork-publish.md
+/agent-note-collaboration-room-with-per-user-fork-and-publish:
+  en: 33f35b71485c596c
+  zh: 0a242e4acfbb27bc
+/agent-note-collaboration-room-with-per-user-fork-and-publish/problem:
+  en: 7d223b8d684a6678
+  zh: cc875d241e8690f5
+/agent-note-collaboration-room-with-per-user-fork-and-publish/proposal:
+  en: cdbedd5cef027289
+  zh: b8da4222973c262e
+/agent-note-collaboration-room-with-per-user-fork-and-publish/package-topology:
+  en: 9c9f6ae55c201430
+  zh: c26c3e0801414c10
+/agent-note-collaboration-room-with-per-user-fork-and-publish/durable-events:
+  en: b9b4e24a0b2df487
+  zh: fb94c1f7211f6a2f
+/agent-note-collaboration-room-with-per-user-fork-and-publish/host-operations:
+  en: 789be15013d120f5
+  zh: f6a993df77be93e1
+/agent-note-collaboration-room-with-per-user-fork-and-publish/isolation:
+  en: 2ef23cc02011d074
+  zh: cef6f847e6cd8e63
+/agent-note-collaboration-room-with-per-user-fork-and-publish/alternatives-considered:
+  en: a80ac75722c7bbea
+  zh: f06d0f149f1667c0
+/agent-note-collaboration-room-with-per-user-fork-and-publish/acceptance-criteria:
+  en: fa9028d81e68973f
+  zh: 96f07af565e7d59d
+/agent-note-collaboration-room-with-per-user-fork-and-publish/risks:
+  en: 5e7c232654f50cfe
+  zh: 35f3074f46eba053

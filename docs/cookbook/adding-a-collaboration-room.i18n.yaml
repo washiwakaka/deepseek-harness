@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for adding-a-collaboration-room.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/cookbook/adding-a-collaboration-room.md
+/:
+  en: 1ec40051134b3a1f
+  zh: 169ee1c7fa1a5118
+/cookbook-adding-a-collaboration-room:
+  en: 08019b3334f870f1
+  zh: 513e94be2da593b1
+/cookbook-adding-a-collaboration-room/summary:
+  en: f5dd420a75c25aa4
+  zh: 763fd1cedaf08e08
+/cookbook-adding-a-collaboration-room/table-of-contents:
+  en: b4f8559c24d34945
+  zh: 8fb4543040a228c7
+/cookbook-adding-a-collaboration-room/prerequisites:
+  en: 4dd0721404b84f4a
+  zh: af484313c013e3e6
+/cookbook-adding-a-collaboration-room/owning-mechanisms:
+  en: 20e7d4472670d0e9
+  zh: 46296222a8e8fb2f
+/cookbook-adding-a-collaboration-room/1-scaffold-the-host-package:
+  en: 077498ed74a5b287
+  zh: 0034432da376b0b3
+/cookbook-adding-a-collaboration-room/2-fail-the-tests-then-implement:
+  en: 0eb7268b00afa6ec
+  zh: dba5d69aa07981d7
+/cookbook-adding-a-collaboration-room/3-acknowledge-persistence:
+  en: 9c4813ccb60e34cd
+  zh: 5ac61a954004d8c2
+/cookbook-adding-a-collaboration-room/4-package-checks:
+  en: 8b2a4b657c4a8e32
+  zh: d0596caacd0c3479
+/cookbook-adding-a-collaboration-room/5-remote:
+  en: 403cfb93c42ea781
+  zh: 838bc059c211cd76
+/cookbook-adding-a-collaboration-room/6-client-ui:
+  en: 02a74d1e47814474
+  zh: 8956376050d5aa2d
+/cookbook-adding-a-collaboration-room/7-overlay-profile:
+  en: 4277823c1d0800cc
+  zh: 4d3b544f6e83b46e
+/cookbook-adding-a-collaboration-room/8-manual-verification:
+  en: e51985add155cfae
+  zh: cdd7d3be2ecf5ad9
+/cookbook-adding-a-collaboration-room/further-exploration:
+  en: 104d237da894c833
+  zh: 0df05efa61457b0b
+/cookbook-adding-a-collaboration-room/dev-note:
+  en: 0d2a884765a80cb9
+  zh: 35f633bca01f4b59
