@@ -219,7 +219,7 @@ export const collaborationProjectionDefinition = {
   key: 'collaboration',
   stateVersion: 2,
   stateSchema: collaborationStateSchema,
-  init: () => emptyCollaborationState(),
+  init: (_header, _inheritedEventCount) => emptyCollaborationState(),
   apply: applyProjectionEvent,
   wire: { viewSchema: collaborationViewSchema, view: collaborationProjectionView },
 } satisfies ProjectionDefinition<'collaboration', CollaborationProjectionState>

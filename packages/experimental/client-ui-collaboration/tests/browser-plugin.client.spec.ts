@@ -53,14 +53,20 @@ async function bench() {
       { id: 'bob', kind: 'human' as const, name: 'Bob' },
     ],
   }))
-  const listMentionModels = vi.fn(async (actorId: string) => ({
-    ok: true as const,
+  const listMentionModels = vi.fn(async (actorId: string): Promise<
+    | { ok: true; value: readonly { id: string; kind: 'ai'; name: string }[] }
+    | { ok: false; error: Error }
+  > => ({
+    ok: true,
     value: actorId === 'bob'
       ? [{ id: 'deepseek-official/deepseek-chat', kind: 'ai' as const, name: 'DeepSeek Chat' }]
       : [{ id: 'qwen-token-plan/qwen-plus', kind: 'ai' as const, name: 'Qwen-Plus' }],
   }))
-  const postMessage = vi.fn(async (_sessionId: SessionId, request: { mentions?: readonly string[] }) => ({
-    ok: true as const,
+  const postMessage = vi.fn(async (_sessionId: SessionId, request: { mentions?: readonly string[] }): Promise<
+    | { ok: true; value: { childSessionIds: string[] } }
+    | { ok: false; error: RemoteError }
+  > => ({
+    ok: true,
     value: { childSessionIds: request.mentions !== undefined && request.mentions.length > 0 ? ['child-a'] : [] },
   }))
   const sendWithRoom = vi.fn(async () => ({ ok: true as const }))

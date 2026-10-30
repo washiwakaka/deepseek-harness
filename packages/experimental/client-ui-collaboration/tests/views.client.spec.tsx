@@ -1,12 +1,25 @@
 // @vitest-environment jsdom
+import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import type { ActorRosterSnapshot } from '../src/client/actor-roster.ts'
+import type { CollaborationMessageChatData } from '../src/client/message-definition.ts'
+import type { CollaborationThinkingChatData } from '../src/client/thinking-definition.ts'
 import { RoomBadge } from '../src/client/RoomBadge.tsx'
 import { RoomMessageView } from '../src/client/RoomMessageView.tsx'
 import { RoomPostButton } from '../src/client/RoomPostButton.tsx'
 import { RoomThinkingStatus } from '../src/client/RoomThinkingStatus.tsx'
 import { RoomThinkingView } from '../src/client/RoomThinkingView.tsx'
+
+type TestView = (props: Record<string, unknown>) => ReactNode
+const Badge = RoomBadge as never as TestView
+const MessageView = RoomMessageView as never as TestView
+const PostButton = RoomPostButton as never as TestView
+const ThinkingStatus = RoomThinkingStatus as never as TestView
+const ThinkingView = RoomThinkingView as never as TestView
 
 afterEach(cleanup)
 
@@ -15,7 +28,7 @@ const humans = [
   { id: 'bob', kind: 'human' as const, name: 'Bob' },
 ]
 
-const t = (key: string, vars?: Record<string, string>) => {
+const t = ((key: string, vars?: Record<string, string>) => {
   if (key === 'badge') return 'Collaboration room'
   if (key === 'roster.aria') return `Occupants ${vars?.names ?? ''}`
   if (key === 'message.aria') return `Room message from ${vars?.name ?? ''}`
@@ -32,6 +45,74 @@ const t = (key: string, vars?: Record<string, string>) => {
   if (key === 'publish') return 'Push to room'
   if (key === 'publish.aria') return "Post this branch's latest answer to the collaboration room"
   return key
+}) as never
+
+function roster(
+  overrides: Partial<ActorRosterSnapshot> & Pick<ActorRosterSnapshot, 'actors'>,
+): ActorRosterSnapshot {
+  return {
+    mentionModels: [],
+    selectedAiId: undefined,
+    thinking: false,
+    branchIds: [],
+    selectedHumanId: undefined,
+    ...overrides,
+  }
+}
+
+function selectRoster(
+  overrides: Partial<ActorRosterSnapshot> & Pick<ActorRosterSnapshot, 'actors'>,
+): (select: (snapshot: ActorRosterSnapshot) => ActorRosterSnapshot) => ActorRosterSnapshot {
+  return select => select(roster(overrides))
+}
+
+function messageNode(data: CollaborationMessageChatData) {
+  return {
+    key: 'message',
+    id: 'message',
+    kind: 'collaboration-message' as const,
+    target: 'chat' as const,
+    anchorSeq: 0,
+    location: { kind: 'unresolved' as const },
+    visibility: 'visible' as const,
+    data,
+  }
+}
+
+function thinkingNode(data: CollaborationThinkingChatData) {
+  return {
+    key: 'thinking',
+    id: 'thinking',
+    kind: 'collaboration-thinking' as const,
+    target: 'chat' as const,
+    anchorSeq: 0,
+    location: { kind: 'unresolved' as const },
+    visibility: 'visible' as const,
+    data,
+  }
+}
+
+function inputState(overrides: {
+  draft?: string
+  phase?: InputState['phase'] | 'running'
+  occurrences?: readonly { source: string; ref: string }[]
+}): InputState {
+  return {
+    draft: overrides.draft ?? '',
+    attachmentIds: [],
+    draftRev: 0,
+    phase: overrides.phase === 'running' ? 'sending' : (overrides.phase ?? 'plain'),
+    occurrences: (overrides.occurrences ?? []).map((row, occurrenceId) => ({
+      occurrenceId,
+      source: row.source,
+      ref: row.ref,
+      offset: 0,
+      length: row.ref.length,
+      label: row.ref,
+      clipboardText: row.ref,
+    })),
+    queue: [],
+  }
 }
 
 function renderPost(overrides: {
@@ -58,20 +139,20 @@ function renderPost(overrides: {
   const selectedHumanId = overrides.selectedHumanId === undefined && !('selectedHumanId' in overrides)
     ? 'alice'
     : overrides.selectedHumanId
-  render(<RoomPostButton
+  render(<PostButton
     t={t}
-    useInput={select => select({
+    useInput={(select: (state: InputState) => InputState) => select(inputState({
       draft: overrides.draft ?? 'hello',
       phase: overrides.phase ?? 'plain',
       occurrences: overrides.occurrences ?? [],
-    })}
-    inputActions={{ setDraft }}
-    sessionId={overrides.sessionId ?? 'room'}
+    }))}
+    inputActions={{ setDraft } as never}
+    sessionId={SessionId(overrides.sessionId ?? 'room')}
     post={post}
     promptWithRoom={promptWithRoom}
     publish={publish}
     thinking={thinking}
-    useActors={select => select({
+    useActors={selectRoster({
       actors,
       selectedHumanId,
       mentionModels: overrides.mentionModels ?? [],
@@ -83,20 +164,20 @@ function renderPost(overrides: {
 
 describe('collaboration-room views', () => {
   it('renders the header badge copy', () => {
-    render(<RoomBadge
+    render(<Badge
       t={t}
       selectHuman={vi.fn()}
-      useActors={select => select({ actors: [], selectedHumanId: undefined })}
+      useActors={selectRoster({ actors: [], selectedHumanId: undefined })}
     /> as never)
     expect(screen.getByRole('status').textContent).toContain('Collaboration room')
     expect(screen.queryByRole('combobox')).toBeNull()
   })
 
   it('renders occupant names from the Host roster', () => {
-    render(<RoomBadge
+    render(<Badge
       t={t}
       selectHuman={vi.fn()}
-      useActors={select => select({
+      useActors={selectRoster({
         actors: [
           { id: 'alice', kind: 'human', name: 'Alice' },
           { id: 'model-a', kind: 'ai', name: 'A' },
@@ -109,20 +190,20 @@ describe('collaboration-room views', () => {
   })
 
   it('falls back to the first human when none is selected', () => {
-    render(<RoomBadge
+    render(<Badge
       t={t}
       selectHuman={vi.fn()}
-      useActors={select => select({ actors: humans, selectedHumanId: undefined })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: undefined })}
     /> as never)
     expect(screen.getByRole('combobox', { name: 'Choose which human posts to the room' })).toHaveProperty('value', 'alice')
   })
 
   it('changes the test human from the header badge', () => {
     const selectHuman = vi.fn()
-    render(<RoomBadge
+    render(<Badge
       t={t}
       selectHuman={selectHuman}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     fireEvent.change(screen.getByRole('combobox', { name: 'Choose which human posts to the room' }), {
       target: { value: 'bob' },
@@ -131,13 +212,10 @@ describe('collaboration-room views', () => {
   })
 
   it('renders a human room line', () => {
-    render(<RoomMessageView
+    render(<MessageView
       t={t}
-      node={{
-        kind: 'collaboration-message',
-        data: { actorId: 'alice', name: 'Alice', kind: 'human', text: 'hello' },
-      }}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      node={messageNode({ actorId: 'alice', name: 'Alice', kind: 'human', text: 'hello' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     const row = screen.getByRole('group', { name: 'Room message from Alice' })
     expect(row.textContent).toContain('hello')
@@ -146,37 +224,28 @@ describe('collaboration-room views', () => {
   })
 
   it('places another human on the opposite side', () => {
-    render(<RoomMessageView
+    render(<MessageView
       t={t}
-      node={{
-        kind: 'collaboration-message',
-        data: { actorId: 'bob', name: 'Bob', kind: 'human', text: 'from bob' },
-      }}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      node={messageNode({ actorId: 'bob', name: 'Bob', kind: 'human', text: 'from bob' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     expect(screen.getByRole('group', { name: 'Room message from Bob' }).parentElement?.getAttribute('data-side')).toBe('other')
   })
 
   it('places an unselected human with other occupants', () => {
-    render(<RoomMessageView
+    render(<MessageView
       t={t}
-      node={{
-        kind: 'collaboration-message',
-        data: { actorId: 'alice', name: 'Alice', kind: 'human', text: 'hello' },
-      }}
-      useActors={select => select({ actors: humans, selectedHumanId: undefined })}
+      node={messageNode({ actorId: 'alice', name: 'Alice', kind: 'human', text: 'hello' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: undefined })}
     /> as never)
     expect(screen.getByRole('group', { name: 'Room message from Alice' }).parentElement?.getAttribute('data-side')).toBe('other')
   })
 
   it('renders an AI room line', () => {
-    render(<RoomMessageView
+    render(<MessageView
       t={t}
-      node={{
-        kind: 'collaboration-message',
-        data: { actorId: 'model-a', name: 'A', kind: 'ai', text: 'reply' },
-      }}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      node={messageNode({ actorId: 'model-a', name: 'A', kind: 'ai', text: 'reply' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     const row = screen.getByRole('group', { name: 'Room message from A' })
     expect(row.getAttribute('data-kind')).toBe('ai')
@@ -185,13 +254,10 @@ describe('collaboration-room views', () => {
   })
 
   it('renders a thinking row for an invoked model', () => {
-    render(<RoomThinkingView
+    render(<ThinkingView
       t={t}
-      node={{
-        kind: 'collaboration-thinking',
-        data: { actorId: 'qwen-token-plan/qwen-plus', running: true },
-      }}
-      useActors={select => select({
+      node={thinkingNode({ actorId: 'qwen-token-plan/qwen-plus', running: true })}
+      useActors={selectRoster({
         actors: humans,
         mentionModels: [{ id: 'qwen-token-plan/qwen-plus', kind: 'ai', name: 'Qwen-Plus' }],
         selectedHumanId: 'alice',
@@ -203,29 +269,26 @@ describe('collaboration-room views', () => {
   })
 
   it('falls back to the actor id when the roster has no name', () => {
-    render(<RoomThinkingView
+    render(<ThinkingView
       t={t}
-      node={{
-        kind: 'collaboration-thinking',
-        data: { actorId: 'missing', running: true },
-      }}
-      useActors={select => select({ actors: humans, mentionModels: [], selectedHumanId: 'alice' })}
+      node={thinkingNode({ actorId: 'missing', running: true })}
+      useActors={selectRoster({ actors: humans, mentionModels: [], selectedHumanId: 'alice' })}
     /> as never)
     expect(screen.getByRole('status', { name: 'missing is thinking' })).toBeTruthy()
   })
 
   it('hides the composer thinking status while idle', () => {
-    render(<RoomThinkingStatus
+    render(<ThinkingStatus
       t={t}
-      useActors={select => select({ actors: humans, thinking: false, selectedHumanId: 'alice' })}
+      useActors={selectRoster({ actors: humans, thinking: false, selectedHumanId: 'alice' })}
     /> as never)
     expect(screen.queryByRole('status')).toBeNull()
   })
 
   it('shows the composer thinking status while a Remote call is in flight', () => {
-    render(<RoomThinkingStatus
+    render(<ThinkingStatus
       t={t}
-      useActors={select => select({ actors: humans, thinking: true, selectedHumanId: 'alice' })}
+      useActors={selectRoster({ actors: humans, thinking: true, selectedHumanId: 'alice' })}
     /> as never)
     expect(screen.getByRole('status', { name: 'Deep diving' }).textContent).toContain('Deep diving')
   })
@@ -295,14 +358,14 @@ describe('collaboration-room views', () => {
     const post = vi.fn(() => new Promise<void>((resolve) => { resolvePost = resolve }))
     const setDraft = vi.fn()
     const thinking = vi.fn()
-    const view = render(<RoomPostButton
+    const view = render(<PostButton
       t={t}
-      useInput={select => select({ draft: 'hello', phase: 'plain' })}
-      inputActions={{ setDraft }}
+      useInput={(select: (state: InputState) => InputState) => select(inputState({ draft: 'hello', phase: 'plain' }))}
+      inputActions={{ setDraft } as never}
       post={post}
       promptWithRoom={vi.fn(async () => {})}
       thinking={thinking}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     fireEvent.click(screen.getByRole('button', { name: 'Post the draft to the collaboration room' }))
     view.unmount()
@@ -315,14 +378,14 @@ describe('collaboration-room views', () => {
   it('ignores a refused post after unmount', async () => {
     let rejectPost: ((reason: unknown) => void) | undefined
     const post = vi.fn(() => new Promise<void>((_resolve, reject) => { rejectPost = reject }))
-    const view = render(<RoomPostButton
+    const view = render(<PostButton
       t={t}
-      useInput={select => select({ draft: 'hello', phase: 'plain' })}
-      inputActions={{ setDraft: vi.fn() }}
+      useInput={(select: (state: InputState) => InputState) => select(inputState({ draft: 'hello', phase: 'plain' }))}
+      inputActions={{ setDraft: vi.fn() } as never}
       post={post}
       promptWithRoom={vi.fn(async () => {})}
       thinking={vi.fn()}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     fireEvent.click(screen.getByRole('button', { name: 'Post the draft to the collaboration room' }))
     view.unmount()
@@ -334,14 +397,14 @@ describe('collaboration-room views', () => {
     let resolvePrompt: (() => void) | undefined
     const promptWithRoom = vi.fn(() => new Promise<void>((resolve) => { resolvePrompt = resolve }))
     const setDraft = vi.fn()
-    const view = render(<RoomPostButton
+    const view = render(<PostButton
       t={t}
-      useInput={select => select({ draft: 'hello', phase: 'plain' })}
-      inputActions={{ setDraft }}
+      useInput={(select: (state: InputState) => InputState) => select(inputState({ draft: 'hello', phase: 'plain' }))}
+      inputActions={{ setDraft } as never}
       post={vi.fn(async () => {})}
       promptWithRoom={promptWithRoom}
       thinking={vi.fn()}
-      useActors={select => select({ actors: humans, selectedHumanId: 'alice' })}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
     /> as never)
     fireEvent.click(screen.getByRole('button', { name: "Send the draft and room transcript to this conversation's model" }))
     view.unmount()

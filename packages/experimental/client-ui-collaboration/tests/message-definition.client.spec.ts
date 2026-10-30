@@ -24,6 +24,7 @@ describe('collaboration-message Conversation Definition', () => {
     const state = collaborationMessageDefinition.start(
       { state: undefined } as never,
       { event: message, location: { kind: 'unresolved' } } as never,
+      {} as never,
     )
     expect(state).toEqual({
       seq: 4,
@@ -32,7 +33,7 @@ describe('collaboration-message Conversation Definition', () => {
       kind: 'human',
       text: 'hello',
     })
-    expect(collaborationMessageDefinition.buildViewNode({
+    expect(collaborationMessageDefinition.buildViewNode!({
       key: 'collaboration-message:msg-1',
       id: 'msg-1',
       state,
@@ -45,8 +46,8 @@ describe('collaboration-message Conversation Definition', () => {
       data: { actorId: 'alice', name: 'Alice', kind: 'human', text: 'hello' },
     })
     expect(collaborationMessageDefinition.update({ state } as never, { event: message } as never)).toBe(state)
-    expect(collaborationMessageDefinition.buildViewNode({ state: undefined } as never)).toBeNull()
-    expect(collaborationMessageDefinition.buildViewNode({
+    expect(collaborationMessageDefinition.buildViewNode!({ state: undefined } as never)).toBeNull()
+    expect(collaborationMessageDefinition.buildViewNode!({
       key: 'collaboration-message:msg-1',
       id: 'msg-1',
       state,
@@ -55,6 +56,7 @@ describe('collaboration-message Conversation Definition', () => {
     expect(() => collaborationMessageDefinition.start(
       { state: undefined } as never,
       { event: { type: 'user/message' } } as never,
+      {} as never,
     )).toThrow(/collaboration-message start requires collaboration\/message/)
   })
 })

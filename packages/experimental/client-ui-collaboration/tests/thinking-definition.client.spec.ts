@@ -42,13 +42,14 @@ describe('collaboration-thinking Conversation Definition', () => {
     const started = collaborationThinkingDefinition.start(
       { state: undefined } as never,
       { event: invoked, location: { kind: 'unresolved' } } as never,
+      {} as never,
     )
     expect(started).toEqual({
       seq: 5,
       actorId: 'qwen-token-plan/qwen-plus',
       running: true,
     })
-    expect(collaborationThinkingDefinition.buildViewNode({
+    expect(collaborationThinkingDefinition.buildViewNode!({
       key: 'collaboration-thinking:think:qwen-token-plan/qwen-plus',
       id: 'think:qwen-token-plan/qwen-plus',
       state: started,
@@ -65,7 +66,7 @@ describe('collaboration-thinking Conversation Definition', () => {
       { event: reply } as never,
     )
     expect(hidden.running).toBe(false)
-    expect(collaborationThinkingDefinition.buildViewNode({
+    expect(collaborationThinkingDefinition.buildViewNode!({
       state: hidden,
       start: { event: invoked, location: { kind: 'unresolved' } },
     } as never)).toBeNull()
@@ -78,8 +79,8 @@ describe('collaboration-thinking Conversation Definition', () => {
       { state: started } as never,
       { event: { type: 'user/message' } } as never,
     )).toBe(started)
-    expect(collaborationThinkingDefinition.buildViewNode({ state: undefined } as never)).toBeNull()
-    expect(collaborationThinkingDefinition.buildViewNode({
+    expect(collaborationThinkingDefinition.buildViewNode!({ state: undefined } as never)).toBeNull()
+    expect(collaborationThinkingDefinition.buildViewNode!({
       key: 'collaboration-thinking:think:qwen-token-plan/qwen-plus',
       id: 'think:qwen-token-plan/qwen-plus',
       state: started,
@@ -92,6 +93,7 @@ describe('collaboration-thinking Conversation Definition', () => {
     expect(() => collaborationThinkingDefinition.start(
       { state: undefined } as never,
       { event: { type: 'collaboration/message' } } as never,
+      {} as never,
     )).toThrow(/collaboration-thinking start requires collaboration\/actor-invoked/)
   })
 })

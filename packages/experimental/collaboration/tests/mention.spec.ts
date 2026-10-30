@@ -34,7 +34,8 @@ function stubService(ctx: Context, name: 'sessionTitle' | 'workspaceRegistry', v
     return
   }
   for (const [key, next] of Object.entries(value)) {
-    vi.spyOn(existing as Record<string, unknown>, key as never).mockImplementation(next as never)
+    vi.spyOn(existing as never as Record<string, (...args: never[]) => unknown>, key)
+      .mockImplementation(next as never)
   }
 }
 
@@ -111,7 +112,7 @@ describe('collaboration mentions', () => {
       'hello',
       '@A please look',
     ])
-    expect(room.session.snapshotEvents().some(event => event.type === 'tool-call')).toBe(false)
+    expect(room.session.snapshotEvents().some(event => event.type === 'tool/call')).toBe(false)
 
     await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
@@ -192,13 +193,17 @@ describe('collaboration mentions', () => {
       type: 'text',
       text: `${COLLABORATION_MENTION_INSTRUCTION.replace('{name}', 'B')}\n\n[Alice] @A\n[Alice] @B`,
     }])
-    expect(childB!.session.snapshotEvents().some(event => event.type === 'tool-call')).toBe(false)
+    expect(childB!.session.snapshotEvents().some(event => event.type === 'tool/call')).toBe(false)
   })
 
   it('invokes a Settings catalog route on a child Agent', async () => {
     const { ctx, room } = await setup([textResponse('from catalog')])
-    vi.spyOn(ctx.llm, 'listProviders').mockReturnValue([{ id: 'mock' }])
-    vi.spyOn(ctx.llm, 'listModels').mockResolvedValue([{ id: 'mock', name: 'Mock' }])
+    vi.spyOn(ctx.llm, 'listProviders').mockReturnValue([{ id: 'mock', name: 'Mock' }])
+    vi.spyOn(ctx.llm, 'listModels').mockResolvedValue([{
+      provider: 'mock',
+      id: 'mock',
+      name: 'Mock',
+    }])
     const posted = await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
       text: '@Mock look',
@@ -279,7 +284,7 @@ describe('collaboration mentions', () => {
     rename.mockClear()
     titleOf = (session: { id: string }) => session.id === room.session.id
       ? { title: 'Design review', source: { kind: 'user' as const } }
-      : { title: 'Compiled dump', source: { kind: 'provider' as const, provider: 'llm' as never } }
+      : { title: 'Compiled dump', source: { kind: 'provider' as const, provider: 'llm' as never } } as never
     await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
       text: '@A dump',

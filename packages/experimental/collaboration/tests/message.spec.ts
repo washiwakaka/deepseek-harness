@@ -69,6 +69,14 @@ describe('collaboration postMessage', () => {
     expect(service.listActors().map(actor => actor.id)).toEqual([
       ActorId('alice'),
       ActorId('bob'),
+      ActorId('charlie'),
+      ActorId('david'),
+      ActorId('eve'),
+      ActorId('frank'),
+      ActorId('george'),
+      ActorId('hannah'),
+      ActorId('isaac'),
+      ActorId('james'),
     ])
   })
 

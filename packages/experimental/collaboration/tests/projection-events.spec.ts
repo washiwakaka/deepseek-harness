@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
-import type { SessionEvent, SessionEventMap, SessionEventType } from '@deepseek-ai/dsh-session'
+import type { SessionEventMap, SessionEventType } from '@deepseek-ai/dsh-session'
 import { collaborationProjectionDefinition, collaborationProjectionView } from '../src/projection.ts'
 import { ActorId, CollaborationMessageId } from '../src/types.ts'
 
@@ -8,18 +8,18 @@ function event<T extends Extract<SessionEventType, `collaboration/${string}`>>(
   type: T,
   data: SessionEventMap[T],
   seq: SessionSeq,
-): SessionEvent<T> {
-  return { type, data, seq, time: seq }
+) {
+  return { type, data, seq, time: Number(seq) }
 }
 
-function project(events: readonly SessionEvent[]) {
+function project(events: readonly { type: string; seq: SessionSeq; time: number; data: object }[]) {
   let state = collaborationProjectionDefinition.init({
     version: SESSION_FORMAT_VERSION,
     id: SessionId('room'),
     createdAt: 0,
     isSeeded: false,
   }, SessionLogOffset(0))
-  for (const next of events) state = collaborationProjectionDefinition.apply(state, next)
+  for (const next of events) state = collaborationProjectionDefinition.apply(state, next as never)
   return state
 }
 
@@ -31,7 +31,7 @@ describe('collaboration projection events', () => {
       data: { turn: 1 },
       seq: SessionSeq(0),
       time: 0,
-    })
+    } as never)
     expect(next).toBe(empty)
   })
 
@@ -141,7 +141,7 @@ describe('collaboration projection events', () => {
       seq: SessionSeq(0),
       time: 0,
       data: { version: 2 },
-    } as SessionEvent])
+    } as never])
     expect(state.failure).toMatch(/payload is invalid/)
   })
 
