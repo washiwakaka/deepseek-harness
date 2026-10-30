@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "コラボレーションルーム overlay",
+    "description": "Config の占用者名簿付きで、コラボレーションルームの Host と Remote プラグインをマウントします。"
+  }
+}

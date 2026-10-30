@@ -72,9 +72,10 @@ export interface UiWorkspace {
   ): Promise<SessionId>
   /**
    * Resolve the Session for a new conversation in a Workspace: navigation names the first reusable
-   * blank member — listed in the Workspace, not archived, and listing no preset or the requested one —
-   * and the Host reuses it under the requested preset or its default, creating another Session when it
-   * reuses none. Concurrent calls for the same Workspace and preset share one attempt.
+   * blank member — listed in the Workspace, not archived, admitted by `filterSessions`, and listing no
+   * preset or the requested one — and the Host reuses it under the requested preset or its default,
+   * creating another Session when it reuses none. Concurrent calls for the same Workspace and preset
+   * share one attempt.
    * @param workspaceId - target Workspace.
    * @param options - choices for the created or reused Session.
    * @returns a Session already addressable through the Session Controller.
@@ -89,6 +90,11 @@ export interface UiWorkspace {
    * whether existing text or attachments are kept, replaced, or followed by the prompt.
    */
   startSession(workspaceId?: WorkspaceId, options?: StartSessionOptions): void
+  /**
+   * Leave the current conversation without creating another Session.
+   * The sidebar stays; the main panel has no selected Session until New Session or a row click.
+   */
+  clearSession(): void
   /**
    * Archive a Session and clear it when it is the current selection.
    * @param sessionId - Session to archive.
@@ -143,6 +149,17 @@ export interface UiWorkspace {
    * @returns idempotent disposer owned by the caller's Cordis fiber.
    */
   whenAccess(workspaceId: WorkspaceId, action: RemoteEndpoint, callback: () => AccessEffect): () => void
+  /**
+   * Hide Sessions from the sidebar and from New Session blank-reuse for the current viewer. The catalog itself is unchanged.
+   * @param visible - whether one Session id is admitted in the current list snapshot.
+   * @returns disposer that restores the all-visible filter.
+   */
+  filterSessions(visible: (id: SessionId, list: SessionListState) => boolean): () => void
+  /** Current sidebar admission; the browser reads this through `useSessionAdmit`. */
+  readonly sessionAdmit: {
+    getSnapshot(): { visible: (id: SessionId, list: SessionListState) => boolean }
+    subscribe(listener: () => void): () => void
+  }
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -175,6 +192,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   )
   private mainReference: SessionReference | undefined
   private restorationNavigation: AbortSignal | undefined
+  /** Sidebar admission; plugins replace `visible` without mutating the Session catalog. */
+  readonly sessionAdmit = createSnapshotStore<{
+    visible: (id: SessionId, list: SessionListState) => boolean
+  }>({ visible: () => true })
 
   /**
    * @param ctx - Client root Context.
@@ -235,11 +256,13 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   private createInWorkspace(workspace: WorkspaceView, options: Pick<StartSessionOptions, 'agentPreset'>): Promise<SessionId> {
     const archived = this.workspaces.list.getSnapshot().archivedSessionIds
     const sessions = this.sessions.list.getSnapshot()
+    const admitted = this.sessionAdmit.getSnapshot().visible
     const blank = sessions.ids.find((id) => {
       const summary = sessions.byId[id]
       const listed = summary?.projectionValues?.agentPreset
       return summary !== undefined && summary.blank && summary.cwd === workspace.path
         && workspace.sessionIds.includes(id) && !archived.includes(id)
+        && admitted(id, sessions)
         && (options.agentPreset === undefined || typeof listed !== 'string' || listed === options.agentPreset)
     })
     return this.createNamed({
@@ -367,6 +390,10 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     )
   }
 
+  clearSession(): void {
+    this.clearMain()
+  }
+
   private prepareDraft(binding: SessionBinding, options: DraftInitializationOptions): void {
     const conversation = this.ctx.get('conversation')
     if (conversation === undefined) this.draftPreparationFailed()
@@ -418,6 +445,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const result = await this.directoryPicker.createDirectory(path, name)
     if (!result.ok) throw new DirectoryBrowseError(result.error)
     return result.value
+  }
+
+  filterSessions(visible: (id: SessionId, list: SessionListState) => boolean): () => void {
+    this.sessionAdmit.set({ visible })
+    return () => { this.sessionAdmit.set({ visible: () => true }) }
   }
 
   whenAccess(workspaceId: WorkspaceId, action: RemoteEndpoint, callback: () => AccessEffect): () => void {

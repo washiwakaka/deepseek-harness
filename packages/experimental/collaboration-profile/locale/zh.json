@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "协作房间 overlay",
+    "description": "挂载协作房间 Host 与 Remote 插件，并带 Config 占用者名单。"
+  }
+}

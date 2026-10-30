@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-29-collaboration-branch-publish.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-29-collaboration-branch-publish.md
+/agent-note-collaboration-branches-selective-publish-and-room-acl:
+  en: 3471165a6e8f233b
+  zh: 4aa5b1b7359149dc
+/agent-note-collaboration-branches-selective-publish-and-room-acl/problem:
+  en: 0580289417281917
+  zh: 8357946188b4d0f7
+/agent-note-collaboration-branches-selective-publish-and-room-acl/proposal:
+  en: b127ea42d97d015a
+  zh: 63a1ea801d739e78
+/agent-note-collaboration-branches-selective-publish-and-room-acl/alternatives-considered:
+  en: 698f9d2301bee54c
+  zh: 1d0d89503405e4d4
+/agent-note-collaboration-branches-selective-publish-and-room-acl/acceptance-criteria:
+  en: 1abab74f9ebd2451
+  zh: 12554a73437f64fa
+/agent-note-collaboration-branches-selective-publish-and-room-acl/risks:
+  en: bdf4c8b06e283a71
+  zh: 077cc01a23738f12

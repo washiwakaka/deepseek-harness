@@ -1,0 +1,13 @@
+# Source-launch overlay. Default Web does not load these rows.
+#   pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.yml
+# Humans live on the Host plugin; Clients call listActors and listMentionModels for Settings `@` models.
+
+- insert:
+    - id: collaboration
+      name: '@deepseek-ai/dsh-experimental-collaboration'
+
+    - id: api-collaboration
+      name: '@deepseek-ai/dsh-experimental-api-collaboration'
+
+    - id: ui-collaboration
+      name: '@deepseek-ai/dsh-experimental-client-ui-collaboration'

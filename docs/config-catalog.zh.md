@@ -1084,6 +1084,52 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-client-ui-forge -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-collaboration -->
+<a id="deepseek-aidsh-experimental-collaboration"></a>
+
+## `@deepseek-ai/dsh-experimental-collaboration`
+
+- `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `llm`
+- `source`: [`packages/experimental/collaboration/src/types.ts:55`](../packages/experimental/collaboration/src/types.ts)
+
+```ts config-catalog
+/** Collaboration-service deployment limits and occupant roster. */
+export interface Config {
+  /**
+   * Human authors and optional Config AI occupants.
+   * Omit to use Alice/Bob with per-human provider allowlists; Clients list `@` models through `listMentionModels`.
+   */
+  readonly actors?: ActorConfig[]
+  /** Maximum UTF-8 bytes in one room message. */
+  readonly maxMessageBytes?: number
+}
+
+/** One Config occupant. */
+export interface ActorConfig {
+  /** Stable occupant identity used in `mentions` and room events. */
+  readonly id: string
+  /** Whether this occupant is a human author or an @-invoked AI. */
+  readonly kind: ActorKind
+  /** Display name compiled into child transcripts. */
+  readonly name: string
+  /** Permission group used in child session titles. Humans only. */
+  readonly group?: string
+  /**
+   * Provider ids this human may `@`. Empty means every connected Settings provider.
+   * Humans only.
+   */
+  readonly providers?: string[]
+  /** Required when {@link kind} is `ai`. */
+  readonly provider?: string
+  /** Required when {@link kind} is `ai`. */
+  readonly model?: string
+}
+
+/** Occupant kind listed in Host Config. */
+export type ActorKind = 'human' | 'ai'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-collaboration -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp -->
 <a id="deepseek-aidsh-experimental-computer-use-cua-driver-mcp"></a>
 
@@ -4891,9 +4937,11 @@ export interface Config {
 | `@deepseek-ai/dsh-cua` | — | [`packages/experimental/cua/src/index.ts`](../packages/experimental/cua/src/index.ts) |
 | `@deepseek-ai/dsh-deepseek-llm-api-extensions` | — | [`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts) |
 | `@deepseek-ai/dsh-deliverable-file-references` | `systemPrompt` | [`packages/deliverables/deliverable-file-references/src/index.ts`](../packages/deliverables/deliverable-file-references/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-api-collaboration` | `collaboration` · `typert` | [`packages/experimental/api-collaboration/src/index.ts`](../packages/experimental/api-collaboration/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-auto-review` | `approval` · `llm` · `permissionPresets` · `sessions` · `tools` · `workingDirectory` | [`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-agent-team` | — | [`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-collaboration` | — | [`packages/experimental/client-ui-collaboration/src/index.ts`](../packages/experimental/client-ui-collaboration/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-stats` | — | [`packages/experimental/client-ui-stats/src/index.ts`](../packages/experimental/client-ui-stats/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |
@@ -4987,6 +5035,7 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-agent-team-profile` | — | [`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-badge-skill-bundle` | — | [`packages/experimental/badge-skill-bundle/src/index.ts`](../packages/experimental/badge-skill-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-browser-use-runtime` | — | [`packages/experimental/browser-use-runtime/src/index.ts`](../packages/experimental/browser-use-runtime/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-collaboration-profile` | — | [`packages/experimental/collaboration-profile/src/index.ts`](../packages/experimental/collaboration-profile/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-cot-translation-bundle` | — | [`packages/experimental/cot-translation-bundle/src/index.ts`](../packages/experimental/cot-translation-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-forge-bundle` | — | [`packages/experimental/forge-bundle/src/index.ts`](../packages/experimental/forge-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-inspector-profile` | — | [`packages/experimental/inspector-profile/src/index.ts`](../packages/experimental/inspector-profile/src/index.ts) |

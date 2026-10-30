@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Kollaborationsraum-Overlay",
+    "description": "Lädt die Host- und Remote-Plugins des Raums mit einer Config-Teilnehmerliste."
+  }
+}

@@ -9,14 +9,14 @@
   en: 78a7e99d2d912768
   zh: 0c2e12bc70916265
 /deepseek-ai-dsh-client-ui-reference/summary:
-  en: 35c991a0c12bf1ad
-  zh: 3c8a45303617cb14
+  en: e04b4298829116a0
+  zh: ec95944e4314d690
 /deepseek-ai-dsh-client-ui-reference/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-client-ui-reference/use-this-package:
-  en: 779a9a534eaad38b
-  zh: 3dd159a2c35702d6
+  en: 32963d774b331d7c
+  zh: 8e7e3fc03929f211
 /deepseek-ai-dsh-client-ui-reference/use-this-package/what-a-pick-inserts:
   en: 0b41c33743e5b422
   zh: 551896094c03f57e
@@ -27,8 +27,8 @@
   en: dbfe93987c800112
   zh: 200d477cc8cd8a1a
 /deepseek-ai-dsh-client-ui-reference/understand-the-implementation/candidate-flow:
-  en: 6c77da1e946f72e1
-  zh: b7b8e1e1d4f5a102
+  en: 57b14122e7e16803
+  zh: 58b57de47684451a
 /deepseek-ai-dsh-client-ui-reference/understand-the-implementation/serialization:
   en: c3fe8963ed80e403
   zh: ba3e057cd63e9189

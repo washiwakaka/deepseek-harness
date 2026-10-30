@@ -6,29 +6,32 @@
   en: 33f35b71485c596c
   zh: 0a242e4acfbb27bc
 /agent-note-collaboration-room-with-per-user-fork-and-publish/problem:
-  en: 7d223b8d684a6678
-  zh: cc875d241e8690f5
+  en: d50216077e6d48a7
+  zh: 95171e49b7049778
 /agent-note-collaboration-room-with-per-user-fork-and-publish/proposal:
-  en: cdbedd5cef027289
-  zh: b8da4222973c262e
+  en: 3d19f855b580d0cf
+  zh: 3acdf348f788ec8d
 /agent-note-collaboration-room-with-per-user-fork-and-publish/package-topology:
-  en: 9c9f6ae55c201430
-  zh: c26c3e0801414c10
+  en: 3f13807b8cd01c4f
+  zh: d2d0654149eb60c7
 /agent-note-collaboration-room-with-per-user-fork-and-publish/durable-events:
-  en: b9b4e24a0b2df487
-  zh: fb94c1f7211f6a2f
+  en: 1b51e1082919f934
+  zh: 4bed42b501d1d11b
+/agent-note-collaboration-room-with-per-user-fork-and-publish/ai-occupants-and-mention-context:
+  en: 901923b9d32aa050
+  zh: e06c810c1719b40e
 /agent-note-collaboration-room-with-per-user-fork-and-publish/host-operations:
-  en: 789be15013d120f5
-  zh: f6a993df77be93e1
+  en: 2ebc18c4ebb9cc55
+  zh: 371420cb10dc32a5
 /agent-note-collaboration-room-with-per-user-fork-and-publish/isolation:
-  en: 2ef23cc02011d074
-  zh: cef6f847e6cd8e63
+  en: 729fb43eb64aa6e3
+  zh: fd683d8c3f308deb
 /agent-note-collaboration-room-with-per-user-fork-and-publish/alternatives-considered:
-  en: a80ac75722c7bbea
-  zh: f06d0f149f1667c0
+  en: 8bc591474c19fb14
+  zh: 609c95c0d0301b4a
 /agent-note-collaboration-room-with-per-user-fork-and-publish/acceptance-criteria:
-  en: fa9028d81e68973f
-  zh: 96f07af565e7d59d
+  en: 1535b75a717b8044
+  zh: 73e96f3d7733a305
 /agent-note-collaboration-room-with-per-user-fork-and-publish/risks:
-  en: 5e7c232654f50cfe
-  zh: 35f3074f46eba053
+  en: ee7407d38e20e085
+  zh: 74bfd8af4a864cee

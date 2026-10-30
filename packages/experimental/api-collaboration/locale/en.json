@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Collaboration room API",
+    "description": "Let the browser post room messages and list @-mention occupants."
+  }
+}

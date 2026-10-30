@@ -255,7 +255,7 @@ describe('candidates', () => {
     }
   })
 
-  it('starts both Remote lookups together and renders files before sessions with stable labels', async () => {
+  it('starts both Remote lookups together and renders sessions before files with stable labels', async () => {
     let releaseFiles!: () => void
     let releaseSessions!: () => void
     const files = vi.fn(() => new Promise<{
@@ -304,6 +304,12 @@ describe('candidates', () => {
     releaseSessions()
     releaseFiles()
     await expect(pending).resolves.toEqual([
+      expect.objectContaining({
+        name: 'Research',
+        description: '~/project · 1h',
+        icon: 'session',
+        section: 'Sessions',
+      }),
       {
         name: 'src/',
         icon: 'folder',
@@ -316,12 +322,6 @@ describe('candidates', () => {
         description: 'docs',
         icon: 'file',
         section: 'Files & folders',
-      }),
-      expect.objectContaining({
-        name: 'Research',
-        description: '~/project · 1h',
-        icon: 'session',
-        section: 'Sessions',
       }),
     ])
   })
@@ -627,7 +627,9 @@ describe('pick and codec', () => {
 
   it('settles files and directories as atomic icon labels; drill keeps directory completion open', async () => {
     const { source } = await bench()
-    const [directory, file] = await source.candidates(session, request(''))
+    const items = await source.candidates(session, request(''))
+    const directory = items.find(item => item.icon === 'folder')
+    const file = items.find(item => item.icon === 'file')
     expect(directory?.drill).toBe(true)
     expect(file?.drill).toBeUndefined()
     expect(pick(source, directory!)).toEqual({

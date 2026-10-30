@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Overlay de sala de colaboración",
+    "description": "Monta los plugins Host y Remote de la sala con una lista Config de ocupantes."
+  }
+}

@@ -71,6 +71,10 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`voice-input-bundle`](voice-input-bundle/README.md) | Default-disabled optional voice input composition | — |
 | [`agent-team-profile`](agent-team-profile/README.md) | Agent Teams collaboration, tools, and Web UI bundle | — |
 | [`agent-team`](agent-team/README.md) | Named teammates with direct messages and a durable shared task board | `ctx.agentTeams` |
+| [`collaboration`](collaboration/README.md) | Shared room of humans and @-invoked AI occupants | `ctx.collaboration` |
+| [`api-collaboration`](api-collaboration/README.md) | Authenticated room posts and occupant roster | `ctx.collaborationController` |
+| [`collaboration-profile`](collaboration-profile/README.md) | Source `--patch` overlay for the room Host, Remote, and Client UI | — |
+| [`client-ui-collaboration`](client-ui-collaboration/README.md) | Room-message Chat rows, a header badge, and a composer post button | — |
 | [`client-ui-agent-team`](client-ui-agent-team/README.md) | Team roster, task board, and teammate navigation for Web | — |
 | [`client-ui-stats`](client-ui-stats/README.md) | Per-turn and per-step context, timing, cache, and tool cost for Web | — |
 | [`auto-review`](auto-review/README.md) | Explicit Web layer for same-model review before each native or PTC inner tool call | — |

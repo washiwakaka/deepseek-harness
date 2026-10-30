@@ -71,6 +71,10 @@ kind: "package-group"
 | [`voice-input-bundle`](voice-input-bundle/README.zh.md) | 默认禁用的可选语音输入组合 | — |
 | [`agent-team-profile`](agent-team-profile/README.zh.md) | Agent Teams 协作、工具与 Web UI 组合包 | — |
 | [`agent-team`](agent-team/README.zh.md) | 具名 teammate，成员之间直接消息与持久共享任务板 | `ctx.agentTeams` |
+| [`collaboration`](collaboration/README.zh.md) | 真人与按 @ 唤醒的 AI 占用者共用的房间 | `ctx.collaboration` |
+| [`api-collaboration`](api-collaboration/README.zh.md) | 带认证的房间发帖与占用者名单 | `ctx.collaborationController` |
+| [`collaboration-profile`](collaboration-profile/README.zh.md) | 房间 Host、Remote 与 Client UI 的源码 `--patch` overlay | — |
+| [`client-ui-collaboration`](client-ui-collaboration/README.zh.md) | 房间消息 Chat 行、标题栏标记与发到房间按钮 | — |
 | [`client-ui-agent-team`](client-ui-agent-team/README.zh.md) | Web Team roster、任务板与 teammate 导航 | — |
 | [`client-ui-stats`](client-ui-stats/README.zh.md) | Web 端按轮次与步骤展示上下文、耗时、缓存与工具成本 | — |
 | [`auto-review`](auto-review/README.zh.md) | 显式 Web 层，在每个原生或 PTC inner 工具调用前使用同一模型审查 | — |

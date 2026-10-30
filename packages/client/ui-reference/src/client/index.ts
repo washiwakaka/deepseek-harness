@@ -120,9 +120,9 @@ export function apply(ctx: ClientContext): void {
         }
       })
       return [
-        ...fileItems.flatMap(candidate => fileCandidate(candidate, quoted === true, withLocation, t)),
         ...sessionRows.filter(item => item.child).map(item => item.row),
         ...sessionRows.filter(item => !item.child).map(item => item.row),
+        ...fileItems.flatMap(candidate => fileCandidate(candidate, quoted === true, withLocation, t)),
       ]
     },
     header(_session: ClientSessionContext, req) {

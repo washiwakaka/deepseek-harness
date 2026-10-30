@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "API de salle de collaboration",
+    "description": "Permet au navigateur de publier des messages de salle et de lister les occupants @."
+  }
+}

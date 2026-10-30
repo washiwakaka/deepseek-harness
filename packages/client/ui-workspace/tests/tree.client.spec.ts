@@ -12,7 +12,7 @@ import type { SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-con
 import {
   type ArchivedFilter,
   deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
-  pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds, workspaceLabel, UNGROUPED_KEY,
+  filterSessionList, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds, workspaceLabel, UNGROUPED_KEY,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 
@@ -572,6 +572,16 @@ describe('deriveFlat', () => {
     const subagent = { ...summary('subagent', 3), parentId: parent.id, origin: 'subagent' as const }
     const ids = visibleSessionIds(withMain(list(parent, fork, subagent), subagent.id), noArchive, 'default')
     expect(ids).toEqual([parent.id, fork.id])
+  })
+
+  it('drops catalog rows a plugin filter does not admit', () => {
+    const kept = summary('kept', 1)
+    const hidden = summary('hidden', 2)
+    const catalogList = list(kept, hidden)
+    const filtered = filterSessionList(catalogList, id => id === kept.id)
+    expect(filtered.ids).toEqual([kept.id])
+    expect(filtered.byId[hidden.id]).toBeUndefined()
+    expect(filterSessionList(catalogList, () => true)).toBe(catalogList)
   })
 
   it('tolerates ids whose summary has not landed yet', () => {

@@ -1,0 +1,35 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 3px 7px;
+  /* Match the title row: pad past traffic lights and shell.leading when the sidebar is collapsed. */
+  margin-inline-start: max(0px, calc(var(--dsh-frame-leading-clearance, 0px) - 20px));
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.label {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.actor {
+  flex-shrink: 0;
+  height: 24px;
+  max-width: 112px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-specific-selector);
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.actor:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}

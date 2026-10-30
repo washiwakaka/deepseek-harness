@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/collaboration/README.md
+/:
+  en: bbead45417176642
+  zh: e200d50057294aa6
+/deepseek-ai-dsh-experimental-collaboration:
+  en: c7d33c441bb6ac1f
+  zh: 8440e77f58934fa4
+/deepseek-ai-dsh-experimental-collaboration/summary:
+  en: 614a765936e4fa20
+  zh: 3e126c78a51a49d3
+/deepseek-ai-dsh-experimental-collaboration/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-experimental-collaboration/use-this-package:
+  en: 6222c417ca03c98d
+  zh: 57f65d3eb318688f
+/deepseek-ai-dsh-experimental-collaboration/use-this-package/when-to-choose-it:
+  en: 32a5e5729b635d02
+  zh: 43f8d1f79cc34925
+/deepseek-ai-dsh-experimental-collaboration/use-this-package/smallest-working-setup:
+  en: 0de327efadd90b42
+  zh: 84b2b5af5fde66cf
+/deepseek-ai-dsh-experimental-collaboration/understand-the-implementation:
+  en: c5296fa5a4196bbd
+  zh: 9286bd74302a2a3b
+/deepseek-ai-dsh-experimental-collaboration/further-exploration:
+  en: 89d1ede7c808f353
+  zh: 6984638027202385
+/deepseek-ai-dsh-experimental-collaboration/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-collaboration/model-experience/mention-task:
+  en: bc69feecc209c4e7
+  zh: 587655d1ea1c129b
+/deepseek-ai-dsh-experimental-collaboration/model-experience/mention-task/what-the-model-sees:
+  en: 6d20ba073aed2c1e
+  zh: efcec444631124a1
+/deepseek-ai-dsh-experimental-collaboration/model-experience/mention-task/what-the-model-sees/mention-instruction:
+  en: b1e58e21077c74a6
+  zh: 327578a65af61e62
+/deepseek-ai-dsh-experimental-collaboration/model-experience/mention-task/token-effect:
+  en: efb282736c5b7114
+  zh: 902cc58b20806549
+/deepseek-ai-dsh-experimental-collaboration/model-experience/mention-task/kv-cache-effect:
+  en: 3f2fb0e70ecde9e5
+  zh: 657c86622166e3a3
+/deepseek-ai-dsh-experimental-collaboration/model-experience/room-context:
+  en: 9d2347b5cd4e6285
+  zh: b3d1de8d82d0b6eb
+/deepseek-ai-dsh-experimental-collaboration/model-experience/room-context/what-the-model-sees:
+  en: 487e996f65c2ff0a
+  zh: b3a3220286b10cba
+/deepseek-ai-dsh-experimental-collaboration/model-experience/room-context/what-the-model-sees/room-context-instruction:
+  en: 0dd549e495f27341
+  zh: 3737b546e12443c8
+/deepseek-ai-dsh-experimental-collaboration/model-experience/room-context/token-effect:
+  en: ef18535da0ffcac3
+  zh: 2d1d230c826972bb
+/deepseek-ai-dsh-experimental-collaboration/model-experience/room-context/kv-cache-effect:
+  en: a5424907495fd63f
+  zh: 88ac8a94f73fec16
+/deepseek-ai-dsh-experimental-collaboration/known-limitations-and-deferred-work:
+  en: 5a9c57b166641051
+  zh: 3873df3ab00392fe
+/deepseek-ai-dsh-experimental-collaboration/known-limitations-and-deferred-work/dev-note:
+  en: 3d9b2c895b0b1c5c
+  zh: dc6255a7f98256b2

@@ -470,6 +470,28 @@ export function sessionMemberIds(list: SessionListState): SessionId[] {
 }
 
 /**
+ * Drop Sessions a plugin filter does not admit. Projection values stay complete so
+ * the filter can still read occupancy of hidden rooms.
+ * @param list - Host session catalog.
+ * @param visible - whether one Session id is admitted in this catalog.
+ * @returns the same list when every member is admitted.
+ */
+export function filterSessionList(
+  list: SessionListState,
+  visible: (id: SessionId, list: SessionListState) => boolean,
+): SessionListState {
+  const ids = list.ids.filter(id => visible(id, list))
+  const byId: SessionListState['byId'] = {}
+  for (const [id, row] of Object.entries(list.byId)) {
+    if (visible(id as SessionId, list)) byId[id as SessionId] = row
+  }
+  if (ids.length === list.ids.length && Object.keys(byId).length === Object.keys(list.byId).length) {
+    return list
+  }
+  return { ...list, ids, byId }
+}
+
+/**
  * Select visible flat-list members without deriving row presentation or ordering.
  * @param list - sessions list snapshot.
  * @param archivedSessionIds - registry-global archive set.

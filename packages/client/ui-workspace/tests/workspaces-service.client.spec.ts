@@ -430,6 +430,17 @@ describe('UiWorkspaceService', () => {
     expect(b.sessions.refreshProjections).not.toHaveBeenCalled()
   })
 
+  it('clears the main Session without creating another', () => {
+    const b = bench()
+    b.uiWorkspace.openSession(sid('target'))
+    const retained = b.sessions.retained.at(-1)
+    b.selectPanel.mockClear()
+    b.uiWorkspace.clearSession()
+    expect(retained?.release).toHaveBeenCalled()
+    expect(b.selectPanel).toHaveBeenCalledWith(null)
+    expect(b.sessions.create).not.toHaveBeenCalled()
+  })
+
   it('keeps the current panel when retaining the target fails', () => {
     const b = bench()
     b.sessions.retain.mockImplementationOnce(() => { throw new Error('open failed') })
@@ -680,6 +691,16 @@ describe('UiWorkspaceService', () => {
     await expect(Promise.all([first, second])).resolves.toEqual([sid('new'), sid('new')])
     await expect(b.uiWorkspace.connectWorkspace(wid('missing'))).rejects.toThrow('unknown workspace')
     expect(b.sessions.retain).not.toHaveBeenCalled()
+  })
+
+  it('creates a new Session when the Workspace blank is hidden from the current viewer', async () => {
+    const b = bench({
+      sessions: sessionState([summary('blank', { blank: true, cwd: '/w/a' })], 'pending'),
+      workspaces: workspaceState([workspace('a', [sid('blank')])]),
+    })
+    b.uiWorkspace.filterSessions(id => id !== sid('blank'))
+    await expect(b.uiWorkspace.connectWorkspace(wid('a'))).resolves.toBe(sid('created-a'))
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('a') })
   })
 
   it('returns New Session to the Workspace blank that holds its unsent draft', async () => {

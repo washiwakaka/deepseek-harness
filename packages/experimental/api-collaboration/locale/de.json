@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Kollaborationsraum-API",
+    "description": "Ermöglicht dem Browser, Raumnachrichten zu senden und @-Teilnehmer aufzulisten."
+  }
+}
