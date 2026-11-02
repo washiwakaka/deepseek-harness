@@ -484,16 +484,16 @@ describe('collaboration-room views', () => {
             error: null,
             values: {
               collaboration: {
-                occupants: ['alice', 'bob'] as never,
-                children: { k: child },
-                childOwners: { [child]: 'bob' } as never,
+                occupants: ['alice', 'bob'],
+                children: { k: SessionId(child) },
+                childOwners: { [SessionId(child)]: 'bob' },
                 messages: [],
                 watermarks: {},
               },
             },
           },
         },
-      } as SessionListState)}
+      } as never)}
     /> as never)
     expect(screen.getByRole('button', { name: "Post this branch's latest answer to the collaboration room" })).toBeTruthy()
   })
