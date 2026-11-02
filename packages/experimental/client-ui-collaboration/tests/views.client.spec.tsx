@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -115,15 +116,15 @@ function inputState(overrides: {
   }
 }
 
-const emptyList = {
+const emptyList: SessionListState = {
   ids: [],
   byId: {},
-  phase: 'ready' as const,
+  phase: 'ready',
   projectionsBySession: {},
 }
 
-function selectList(list: typeof emptyList = emptyList) {
-  return ((select: (state: typeof emptyList) => unknown) => select(list)) as never
+function selectList(list: SessionListState = emptyList) {
+  return ((select: (state: SessionListState) => unknown) => select(list)) as never
 }
 
 function renderPost(overrides: {
@@ -474,21 +475,23 @@ describe('collaboration-room views', () => {
       thinking={vi.fn()}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'bob', branchIds: [] })}
       useSessions={selectList({
-        ids: ['room', child],
+        ids: [SessionId('room'), SessionId(child)],
         byId: {},
         phase: 'ready',
         projectionsBySession: {
-          room: {
+          [SessionId('room')]: {
+            state: 'ready',
+            error: null,
             values: {
               collaboration: {
-                occupants: ['alice', 'bob'],
+                occupants: ['alice', 'bob'] as never,
                 children: { k: child },
-                childOwners: { [child]: 'bob' },
+                childOwners: { [child]: 'bob' } as never,
               },
             },
           },
         },
-      } as typeof emptyList)}
+      })}
     /> as never)
     expect(screen.getByRole('button', { name: "Post this branch's latest answer to the collaboration room" })).toBeTruthy()
   })
