@@ -25,6 +25,52 @@
   background-color: var(--dsw-alias-interactive-bg-hover);
 }
 
+.lineage {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+  pointer-events: none;
+}
+
+.lineageCol {
+  position: relative;
+  width: 34px;
+  flex: none;
+  align-self: stretch;
+}
+
+.lineageSpine::before,
+.lineageTee::before,
+.lineageElbow::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 21px;
+  width: 2px;
+  background: var(--dsw-alias-label-tertiary);
+}
+
+.lineageSpine::before,
+.lineageTee::before {
+  top: 0;
+  bottom: 0;
+}
+
+.lineageElbow::before {
+  top: 0;
+  height: 50%;
+}
+
+.lineageTee::after,
+.lineageElbow::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 21px;
+  inset-inline-end: 0;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: var(--dsw-alias-label-tertiary);
+}
+
 .dragPreview {
   background: var(--dsw-specific-sidebar-fill);
 }
@@ -263,6 +309,12 @@
 .searchResultRow.archived .searchResultWorkspace,
 .searchResultRow.archived .searchResultSnippet {
   color: var(--dsw-alias-label-caption);
+}
+
+/* Fork children sit one label step down from the parent row. Archived
+   caption ink still wins over this when both apply. */
+.sessionRow.nested:not(.archived) .title {
+  color: var(--dsw-alias-label-secondary);
 }
 
 .dot {

@@ -428,7 +428,7 @@ describe('deriveGroups', () => {
     expect(counts(statuses)).toEqual([0, 0, 0])
   })
 
-  it('ignores fork lineage and sorts every ungrouped session as a top-level row', () => {
+  it('nests ungrouped forks under a visible parent after recency order', () => {
     const parent = summary('parent', 1)
     const oldChild = { ...summary('old-child', 10), parentId: parent.id }
     const newChild = { ...summary('new-child', 20), parentId: parent.id }
@@ -448,8 +448,8 @@ describe('deriveGroups', () => {
 
     expect(groups).toHaveLength(1)
     expect(groups[0]!.sessions.map(node => node.id)).toEqual([
-      newChild.id, tieA.id, tieB.id, oldChild.id,
-      cycleB.id, cycleA.id, orphan.id, self.id, parent.id,
+      orphan.id, self.id, parent.id, newChild.id, tieA.id, tieB.id, oldChild.id,
+      cycleB.id, cycleA.id,
     ])
 
     // Equal timestamps use ids as a deterministic tiebreak in either input order.
@@ -557,13 +557,64 @@ describe('deriveGroups', () => {
 })
 
 describe('deriveFlat', () => {
-  it('renders ordinary forks in the supplied order regardless of timestamps', () => {
+  it('nests a fork listed before its source under that source', () => {
     const parent = summary('parent', 10)
     const child = { ...summary('child', 30), parentId: parent.id }
+    const rows = deriveFlat(list(parent, child), [child.id, parent.id], noRows, noAttention)
+    expect(rows.map(row => ({ id: row.id, depth: row.lineageDepth, guide: row.lineageGuide })))
+      .toEqual([
+        { id: parent.id, depth: 0, guide: undefined },
+        { id: child.id, depth: 1, guide: [true] },
+      ])
+  })
+
+  it('nests ordinary forks under their parent while keeping unrelated neighbors', () => {
+    const parent = summary('parent', 10)
+    const older = { ...summary('older-fork', 30), parentId: parent.id }
+    const newer = { ...summary('newer-fork', 40), parentId: parent.id }
     const tieB = summary('tie-b', 20)
     const tieA = summary('tie-a', 20)
-    const rows = deriveFlat(list(parent, child, tieB, tieA), [parent.id, tieA.id, child.id, tieB.id], noRows, noAttention)
-    expect(rows.map(row => row.id)).toEqual([parent.id, tieA.id, child.id, tieB.id])
+    const rows = deriveFlat(
+      list(parent, older, newer, tieB, tieA),
+      [parent.id, tieA.id, older.id, newer.id, tieB.id],
+      noRows,
+      noAttention,
+    )
+    expect(rows.map(row => ({ id: row.id, guide: row.lineageGuide }))).toEqual([
+      { id: parent.id, guide: undefined },
+      { id: older.id, guide: [false] },
+      { id: newer.id, guide: [true] },
+      { id: tieA.id, guide: undefined },
+      { id: tieB.id, guide: undefined },
+    ])
+  })
+
+  it('draws polyline guides under a visible parent without a session twist', () => {
+    const parent = summary('parent', 10)
+    const child = { ...summary('child', 30), parentId: parent.id }
+    const grandchild = { ...summary('grandchild', 40), parentId: child.id }
+    const orphan = { ...summary('orphan', 5), parentId: sid('missing') }
+    const cycleA = { ...summary('cycle-a', 6), parentId: sid('cycle-b') }
+    const cycleB = { ...summary('cycle-b', 7), parentId: sid('cycle-a') }
+    const self = { ...summary('self', 8), parentId: sid('self') }
+    const rows = deriveFlat(
+      list(parent, child, grandchild, orphan, cycleA, cycleB, self),
+      [parent.id, child.id, grandchild.id, orphan.id, cycleA.id, cycleB.id, self.id],
+      noRows,
+      noAttention,
+    )
+    expect(rows.map(row => ({
+      id: row.id, depth: row.lineageDepth, guide: row.lineageGuide,
+      parentId: row.parentId, parentTitle: row.parentTitle,
+    }))).toEqual([
+      { id: parent.id, depth: 0, guide: undefined, parentId: undefined, parentTitle: undefined },
+      { id: child.id, depth: 1, guide: [true], parentId: parent.id, parentTitle: 'parent' },
+      { id: grandchild.id, depth: 2, guide: [true, true], parentId: child.id, parentTitle: 'child' },
+      { id: orphan.id, depth: 0, guide: undefined, parentId: orphan.parentId, parentTitle: undefined },
+      { id: self.id, depth: 0, guide: undefined, parentId: self.parentId, parentTitle: 'self' },
+      { id: cycleA.id, depth: 2, guide: [true], parentId: cycleA.parentId, parentTitle: 'cycle-b' },
+      { id: cycleB.id, depth: 1, guide: undefined, parentId: cycleB.parentId, parentTitle: 'cycle-a' },
+    ])
   })
 
   it('hides subagent-origin rows but keeps ordinary forks', () => {

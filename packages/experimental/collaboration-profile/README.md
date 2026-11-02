@@ -71,7 +71,7 @@ No direct effect.
 <a id="known-limitations-and-deferred-work"></a>
 
 - This overlay is not an Official bundle and has no plugin-manager icon.
-- Composer send still follows up the room Agent; @ picking is not registered yet.
+- Composer Enter still follows up the room Agent; Post to room owns `@` chips.
 
 <a id="dev-note"></a>
 ### Dev Note

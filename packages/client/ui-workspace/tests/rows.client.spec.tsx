@@ -950,6 +950,48 @@ describe('workspace browser rows', () => {
       expect(screen.getAllByText('新会话')).toHaveLength(2)
       expect(screen.getByText('~/project')).toBeTruthy()
     })
+
+    it('names the fork source session on the card', () => {
+      hoverCard({
+        ...located,
+        parentId: sid('room-s'),
+        parentTitle: 'Design review',
+        lineageDepth: 1,
+        lineageGuide: [true],
+      })
+      expect(screen.getByText('来自 Design review')).toBeTruthy()
+    })
+
+    it('uses the untitled label when the fork source has no title', () => {
+      hoverCard({
+        ...located,
+        parentId: sid('room-s'),
+        parentTitle: '',
+        lineageDepth: 1,
+        lineageGuide: [true],
+      })
+      expect(screen.getByText('来自 未命名')).toBeTruthy()
+    })
+  })
+
+  it('draws a tee then an elbow for sibling forks', () => {
+    const older: SessionNode = {
+      id: sid('older'), title: 'Older fork', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+      parentId: sid('room-s'), parentTitle: 'Room', lineageDepth: 1, lineageGuide: [false],
+    }
+    const newer: SessionNode = {
+      ...older, id: sid('newer'), title: 'Newer fork', lineageGuide: [true],
+    }
+    render(
+      <>
+        <SessionNodeItem node={older} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />
+        <SessionNodeItem node={newer} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />
+      </>,
+    )
+    expect(screen.getByText('Older fork').closest('[role="treeitem"]')?.className).toMatch(/nested/)
+    expect(screen.getByText('Older fork').closest('[role="treeitem"]')?.querySelector('[data-lineage="tee"]')).toBeTruthy()
+    expect(screen.getByText('Newer fork').closest('[role="treeitem"]')?.querySelector('[data-lineage="elbow"]')).toBeTruthy()
   })
 
   it('routes both context and More gestures to the clicked Session without selecting it', () => {

@@ -114,12 +114,20 @@ describe('WorkspaceBrowser.module.css list', () => {
     // hosts either the row's status dot or the leading seat, and it reserves its
     // own box, so the title's one shared margin below needs no per-view override.
     expect(rowDeclarations('.slot')?.get('width')).toBe('16px')
+    expect(rowDeclarations('.lineageCol')?.get('width')).toBe('34px')
+    expect(rowDeclarations('.lineageSpine::before')?.get('width')).toBe('2px')
+    expect(rowDeclarations('.lineageSpine::before')?.get('inset-inline-start')).toBe('21px')
+    expect(rowDeclarations('.lineageSpine::before')?.get('background')).toBe('var(--dsw-alias-label-tertiary)')
+    expect(rowDeclarations('.lineageElbow::after')?.get('height')).toBe('2px')
+    expect(rowDeclarations('.lineage')?.get('margin-inline-end')).toBeUndefined()
     expect(rowDeclarations('.slot')?.get('height')).toBe('20px')
     expect(rowDeclarations('.sessionRow .title')?.get('margin')).toBe('0 6px 0 var(--dsh-sidebar-label-gap)')
     expect(rowDeclarations('.searchResultRow')?.get('min-height')).toBe('48px')
     expect(rowDeclarations('.searchResultTitle')?.get('margin')).toBe('0 var(--dsh-sidebar-label-gap)')
     expect(rowDeclarations('.sessionRow.selected')?.get('background-color'))
       .toBe('var(--dsw-alias-interactive-bg-hover)')
+    expect(rowDeclarations('.sessionRow.nested:not(.archived) .title')?.get('color'))
+      .toBe('var(--dsw-alias-label-secondary)')
   })
 
   it('shares action spacing and inset backgrounds without moving the title column', () => {

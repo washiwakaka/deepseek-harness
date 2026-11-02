@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SESSION_FORMAT_VERSION, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEventMap, SessionEventType } from '@deepseek-ai/dsh-session'
-import { collaborationProjectionDefinition, collaborationProjectionView } from '../src/projection.ts'
+import { childOf, collaborationProjectionDefinition, collaborationProjectionView } from '../src/projection.ts'
 import { ActorId, CollaborationMessageId } from '../src/types.ts'
 
 function event<T extends Extract<SessionEventType, `collaboration/${string}`>>(
@@ -66,6 +66,44 @@ describe('collaboration projection events', () => {
     expect(state.occupants).toEqual([ActorId('alice')])
     expect(state.children[actor]).toBe(child)
     expect(state.watermarks[actor]).toBe(0)
+    expect(state.childOwners).toEqual({})
+  })
+
+  it('keeps a private child per mentioning human', () => {
+    const actor = ActorId('model-a')
+    const aliceChild = SessionId('child-alice')
+    const bobChild = SessionId('child-bob')
+    const state = project([
+      event('collaboration/branch-opened', {
+        version: 1,
+        actorId: actor,
+        ownerId: ActorId('alice'),
+        childSessionId: aliceChild,
+        baseSeq: SessionSeq(0),
+      }, SessionSeq(0)),
+      event('collaboration/actor-invoked', {
+        version: 1,
+        actorId: actor,
+        ownerId: ActorId('alice'),
+        childSessionId: aliceChild,
+        throughSeq: SessionSeq(0),
+      }, SessionSeq(1)),
+      event('collaboration/branch-opened', {
+        version: 1,
+        actorId: actor,
+        ownerId: ActorId('bob'),
+        childSessionId: bobChild,
+        baseSeq: SessionSeq(2),
+      }, SessionSeq(2)),
+    ])
+    expect(state.failure).toBeUndefined()
+    expect(state.childOwners).toEqual({
+      [aliceChild]: ActorId('alice'),
+      [bobChild]: ActorId('bob'),
+    })
+    expect(state.children[actor]).toBeUndefined()
+    expect(childOf(state, ActorId('alice'), actor)).toBe(aliceChild)
+    expect(childOf(state, ActorId('bob'), actor)).toBe(bobChild)
   })
 
   it('records occupant invites without duplicating the creator', () => {
@@ -186,6 +224,7 @@ describe('collaboration projection events', () => {
       children: {},
       watermarks: {},
       occupants: [],
+      childOwners: {},
     })
     expect(collaborationProjectionView({ ...ok, failure: 'bad' }).failure).toBe('bad')
   })

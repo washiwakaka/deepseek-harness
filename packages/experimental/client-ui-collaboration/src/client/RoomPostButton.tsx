@@ -3,9 +3,11 @@ import { IconSendOutlineRegular, IconUsersOutlineRegular, Tooltip } from '@deeps
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ActorRosterSnapshot } from './actor-roster.ts'
 import { roomMentionIds } from './mention-source.ts'
 import { isNoHumanPostError } from './post-draft.ts'
+import { isOwnedBranch } from './visibility.ts'
 import { NS } from './locales.ts'
 import css from './RoomPostButton.module.css'
 
@@ -16,7 +18,10 @@ export interface RoomPostInjected {
   promptWithRoom: (text: string, mentions: readonly string[]) => Promise<void>
   publish: () => Promise<void>
   thinking: (value: boolean) => void
-  hooks: { actors: HostObservable<ActorRosterSnapshot> }
+  hooks: {
+    actors: HostObservable<ActorRosterSnapshot>
+    sessions: HostObservable<SessionListState>
+  }
 }
 
 /** Full props of the compact room-post control before the composer Send button. */
@@ -41,7 +46,8 @@ function sendErrorCopy(reason: unknown, t: RoomPostButtonProps['t']): string {
  * Posts the composer draft through the collaboration Remote, or admits room context then followups.
  */
 export function RoomPostButton({
-  useInput, inputActions, sessionId, post, promptWithRoom, publish, thinking, useActors, t,
+  useInput, inputActions, sessionId, post, promptWithRoom, publish, thinking,
+  useActors, useSessions, t,
 }: RoomPostButtonProps) {
   const draft = useInput(s => s.draft)
   const phase = useInput(s => s.phase)
@@ -53,7 +59,9 @@ export function RoomPostButton({
     ...humans.map(human => human.id).filter(id => id !== selectedHumanId),
     ...mentionModels.map(model => model.id),
   ])
-  const onBranch = useActors(snapshot => snapshot.branchIds?.includes(sessionId) === true)
+  const remembered = useActors(snapshot => snapshot.branchIds?.includes(sessionId) === true)
+  const listed = useSessions(list => isOwnedBranch(selectedHumanId, list, sessionId))
+  const onBranch = remembered || listed
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const alive = useRef(true)

@@ -67,19 +67,6 @@ export function collaborationMentionSource(
 }
 
 /**
- * Mention route ids from composer chips that name a Settings model.
- * @param occurrences - InputState reference chips in clipboard order.
- * @param aiIds - Settings model ids the current human may `@`.
- * @returns unique model route ids in chip order.
- */
-export function modelMentionIds(
-  occurrences: readonly { readonly source: string; readonly ref: string }[],
-  aiIds: readonly string[] = [],
-): readonly string[] {
-  return roomMentionIds(occurrences, aiIds)
-}
-
-/**
  * Mention ids from composer chips that name a room human or a Settings model.
  * @param occurrences - InputState reference chips in clipboard order.
  * @param allowedIds - human occupant ids and Settings model ids the poster may `@`.

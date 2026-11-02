@@ -446,6 +446,30 @@ function SessionStatusDots({ statuses }: { statuses: readonly [SessionStatus, ..
   )
 }
 
+/**
+ * One 34px ancestor column of the session-tree polyline: a continuing spine,
+ * a tee into this row, an elbow on the last sibling, or a gap under a
+ * finished ancestor. The vertical stroke lines up with the parent row's
+ * leading slot.
+ * @param last - whether the node on this column is the last sibling.
+ * @param leaf - whether this column is the row's own parent connector.
+ * @returns a decorative column.
+ */
+function LineageColumn({ last, leaf }: { last: boolean; leaf: boolean }) {
+  const kind = leaf ? (last ? 'elbow' : 'tee') : (last ? 'gap' : 'spine')
+  return (
+    <span
+      className={clsx(
+        css.lineageCol,
+        kind === 'spine' && css.lineageSpine,
+        kind === 'tee' && css.lineageTee,
+        kind === 'elbow' && css.lineageElbow,
+      )}
+      data-lineage={kind}
+    />
+  )
+}
+
 /** Non-interactive pinned-row marker; the enclosing row remains the only action. */
 function PinnedIndicator({ t }: { t: RowTranslate }) {
   const label = t('row.pinned')
@@ -477,6 +501,13 @@ function SessionHoverContent({ node, cwd, now, renderSlot, t }: {
     <div className={css.hoverContent}>
       <div className={css.hoverTitle}>{displayTitle(node, t)}</div>
       {cwd !== undefined && <div className={css.hoverPath}>{cwd}</div>}
+      {node.parentId !== undefined && node.parentTitle !== undefined && (
+        <div className={css.hoverPath}>
+          {t('hover.forkedFrom', {
+            title: node.parentTitle.length === 0 ? t('session.untitled') : node.parentTitle,
+          })}
+        </div>
+      )}
       {/* Same placeholder rule as the row's trailing cell: no timestamp
           before the first prompt. */}
       {!node.blank && <div className={css.hoverTime}>{hoverTimeLabel(node.updatedAt, now, t)}</div>}
@@ -652,16 +683,19 @@ export function SessionNodeItem({
     rowRef.current?.scrollIntoView({ block: 'nearest' })
     onReveal()
   }, [onReveal])
+  const lineageGuide = node.lineageGuide ?? []
+  const lineageDepth = node.lineageDepth ?? lineageGuide.length
   const ownRow = (
     <div
       ref={rowRef}
       data-row-key={`session:${node.id}`}
       className={clsx(
         css.sessionRow, selected && css.selected, menuOpen && css.menuOpen,
-        row.archived && css.archived,
+        row.archived && css.archived, lineageDepth > 0 && css.nested,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
+      aria-level={lineageDepth === 0 ? undefined : lineageDepth + 1}
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
       tabIndex={0}
@@ -701,6 +735,17 @@ export function SessionNodeItem({
           drag.drop(rowHalf(e))
         }}
     >
+      {lineageGuide.length > 0 && (
+        <span className={css.lineage} aria-hidden>
+          {lineageGuide.map((last, index) => (
+            <LineageColumn
+              key={index}
+              last={last}
+              leaf={index === lineageGuide.length - 1}
+            />
+          ))}
+        </span>
+      )}
       {/* Pending interaction and own or descendant activity outrank the
           finished-but-unviewed reminder, which returns after activity stops
           and is cleared by opening the session. Archived rows keep the slot

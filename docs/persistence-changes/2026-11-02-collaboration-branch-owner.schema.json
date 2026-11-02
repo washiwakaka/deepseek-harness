@@ -1,0 +1,20 @@
+{
+  "formatVersion": 2,
+  "roots": [
+    {"key":"event:collaboration/actor-invoked","kind":"event","event":"collaboration/actor-invoked","surface":false,"digest":"483180bc7536a02616b78ae5d0e899764c2bfd57a672465b67dcda73d66e1621"},
+    {"key":"event:collaboration/branch-opened","kind":"event","event":"collaboration/branch-opened","surface":false,"digest":"fa605f13ff1b8713a6436b953d87febc025da73fdd67ae83be1dfba13c0ea88a"}
+  ],
+  "types": [],
+  "nodes": {
+    "0657d3ca5ac4e7bf": {"kind":"primitive","type":"number"},
+    "2bc36aae1b63ddb7": {"kind":"object","properties":[{"name":"actorId","type":"4cd48f3e5108bd6e","optional":false},{"name":"baseSeq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"childSessionId","type":"4cd48f3e5108bd6e","optional":false},{"name":"ownerId","type":"4cd48f3e5108bd6e","optional":true},{"name":"version","type":"f88f1b7b6bb733f6","optional":false}],"indices":[]},
+    "483180bc7536a026": {"kind":"object","properties":[{"name":"data","type":"8b4856efb09c2de4","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"f57b879ae0870493","optional":false}],"indices":[]},
+    "4cd48f3e5108bd6e": {"kind":"primitive","type":"string"},
+    "547233ac520f2ec8": {"kind":"literal","value":"collaboration/branch-opened"},
+    "8b4856efb09c2de4": {"kind":"object","properties":[{"name":"actorId","type":"4cd48f3e5108bd6e","optional":false},{"name":"childSessionId","type":"4cd48f3e5108bd6e","optional":false},{"name":"ownerId","type":"4cd48f3e5108bd6e","optional":true},{"name":"throughSeq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"version","type":"f88f1b7b6bb733f6","optional":false}],"indices":[]},
+    "dacf3d5f3e4ff619": {"kind":"literal","value":true},
+    "f57b879ae0870493": {"kind":"literal","value":"collaboration/actor-invoked"},
+    "f88f1b7b6bb733f6": {"kind":"literal","value":1},
+    "fa605f13ff1b8713": {"kind":"object","properties":[{"name":"data","type":"2bc36aae1b63ddb7","optional":false},{"name":"ignorable","type":"dacf3d5f3e4ff619","optional":true},{"name":"seq","type":"0657d3ca5ac4e7bf","optional":false},{"name":"time","type":"0657d3ca5ac4e7bf","optional":false},{"name":"type","type":"547233ac520f2ec8","optional":false}],"indices":[]}
+  }
+}

@@ -450,6 +450,90 @@ describe('collaboration-room browser plugin', () => {
     await Promise.resolve()
   })
 
+  it('clears a currently open branch the selected human cannot see', async () => {
+    const ctx = new Context()
+    class Remote extends Service {
+      constructor() { super(ctx, 'remote') }
+      async $mount() { return async () => {} }
+    }
+    new Remote()
+    const clearSession = vi.fn()
+    const catalog = {
+      ids: ['room-1', 'branch-1'],
+      byId: {
+        'room-1': {
+          id: 'room-1',
+          displayTitle: 'room',
+          running: false,
+          retainedBy: {},
+          blank: false,
+          updatedAt: 0,
+        },
+        'branch-1': {
+          id: 'branch-1',
+          displayTitle: 'branch',
+          running: false,
+          retainedBy: { mainView: 1 },
+          blank: false,
+          updatedAt: 0,
+        },
+      },
+      phase: 'ready' as const,
+      projectionsBySession: {
+        'room-1': {
+          state: 'ready' as const,
+          error: null,
+          values: {
+            collaboration: {
+              occupants: ['alice', 'bob'],
+              children: { bobA: 'branch-1' },
+              childOwners: { 'branch-1': 'bob' },
+            },
+          },
+        },
+      },
+    }
+    ctx.provide('remote.collaboration', {
+      listActors: vi.fn(async () => ({
+        ok: true as const,
+        value: [
+          { id: 'alice', kind: 'human' as const, name: 'Alice' },
+          { id: 'bob', kind: 'human' as const, name: 'Bob' },
+        ],
+      })),
+      listMentionModels: vi.fn(async () => ({ ok: true as const, value: [] })),
+      postMessage: vi.fn(),
+      claimRoom: vi.fn(async () => ({ ok: true as const })),
+    })
+    ctx.provide('uiConversation', { events: { register: () => () => {} } })
+    ctx.provide('locale', new LocaleRuntime(ctx))
+    ctx.provide('uiWorkspace', {
+      openSession: vi.fn(),
+      filterSessions: vi.fn((visible: (id: SessionId, list: unknown) => boolean) => {
+        visible('branch-1' as SessionId, catalog)
+        return () => {}
+      }),
+      startSession: vi.fn(),
+      clearSession,
+    })
+    ctx.provide('sessions', stubSessions({ getSnapshot: () => catalog }))
+    ctx.provide('inputTriggers', { registerSource: () => () => {} })
+    await ctx.plugin(SlotRegistry)
+    ctx.slots.register({
+      name: 'root',
+      children: {
+        'conversation.header.leading': { kind: 'single', scope: 'root' },
+        'conversation.chat.node': { kind: 'keyed', scope: 'session' },
+        'conversation.input.right': { kind: 'list', scope: 'session' },
+        'conversation.composer.dock': { kind: 'list', scope: 'session' },
+      },
+    } as never, () => null)
+    const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
+    await fiber.await()
+    await vi.waitFor(() => { expect(clearSession).toHaveBeenCalled() })
+    await fiber.dispose()
+  })
+
   it('clears the conversation when the open room is hidden, then restores that human later', async () => {
     const ctx = new Context()
     class Remote extends Service {
@@ -535,6 +619,89 @@ describe('collaboration-room browser plugin', () => {
     expect(claimRoom).not.toHaveBeenCalledWith('room-1', 'bob')
     injected.selectHuman('alice')
     expect(openSession).toHaveBeenCalledWith('room-1')
+    await fiber.dispose()
+  })
+
+  it('keeps the restored session when it is already open', async () => {
+    const ctx = new Context()
+    class Remote extends Service {
+      constructor() { super(ctx, 'remote') }
+      async $mount() { return async () => {} }
+    }
+    new Remote()
+    let mainId: string | undefined = 'room-1'
+    const openSession = vi.fn((id: SessionId) => { mainId = id })
+    const catalog = () => ({
+      ids: ['room-1'],
+      byId: {
+        'room-1': {
+          id: 'room-1',
+          displayTitle: 'room',
+          running: false,
+          retainedBy: { mainView: mainId === 'room-1' ? 1 : 0 },
+          blank: false,
+          updatedAt: 0,
+        },
+      },
+      phase: 'ready' as const,
+      projectionsBySession: {
+        'room-1': {
+          state: 'ready' as const,
+          error: null,
+          values: { collaboration: { occupants: ['alice', 'bob'], children: {} } },
+        },
+      },
+    })
+    ctx.provide('remote.collaboration', {
+      listActors: vi.fn(async () => ({
+        ok: true as const,
+        value: [
+          { id: 'alice', kind: 'human' as const, name: 'Alice' },
+          { id: 'bob', kind: 'human' as const, name: 'Bob' },
+        ],
+      })),
+      listMentionModels: vi.fn(async () => ({ ok: true as const, value: [] })),
+      postMessage: vi.fn(),
+      claimRoom: vi.fn(async () => ({ ok: true as const })),
+    })
+    ctx.provide('uiConversation', { events: { register: () => () => {} } })
+    ctx.provide('locale', new LocaleRuntime(ctx))
+    ctx.provide('uiWorkspace', {
+      openSession,
+      filterSessions: vi.fn((visible: (id: SessionId, list: unknown) => boolean) => {
+        visible('room-1' as SessionId, catalog())
+        return () => {}
+      }),
+      startSession: vi.fn(),
+      clearSession: vi.fn(() => { mainId = undefined }),
+    })
+    ctx.provide('sessions', stubSessions({ getSnapshot: catalog }))
+    ctx.provide('inputTriggers', { registerSource: () => () => {} })
+    await ctx.plugin(SlotRegistry)
+    ctx.slots.register({
+      name: 'root',
+      children: {
+        'conversation.header.leading': { kind: 'single', scope: 'root' },
+        'conversation.chat.node': { kind: 'keyed', scope: 'session' },
+        'conversation.input.right': { kind: 'list', scope: 'session' },
+        'conversation.composer.dock': { kind: 'list', scope: 'session' },
+      },
+    } as never, () => null)
+    const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
+    await fiber.await()
+    await vi.waitFor(() => {
+      const roster = ctx.slots.entries('conversation.header.leading')
+        .find(entry => entry.component === RoomBadge)
+        ?.inject?.() as { hooks: { actors: { getSnapshot: () => { selectedHumanId: string | undefined } } } }
+      expect(roster.hooks.actors.getSnapshot().selectedHumanId).toBe('alice')
+    })
+    const injected = ctx.slots.entries('conversation.header.leading')
+      .find(entry => entry.component === RoomBadge)
+      ?.inject?.() as { selectHuman: (id: string) => void }
+    injected.selectHuman('bob')
+    mainId = 'room-1'
+    injected.selectHuman('alice')
+    expect(openSession).not.toHaveBeenCalled()
     await fiber.dispose()
   })
 
@@ -1028,9 +1195,7 @@ describe('collaboration-room browser plugin', () => {
     })
     await injected.post('still a room line')
     expect(b.postMessage).toHaveBeenCalledWith('sess-1', { actorId: 'alice', text: 'still a room line' })
-    b.openSession.mockImplementationOnce(() => { throw new Error('not listed') })
     await injected.post('@Qwen-Plus look', ['qwen-token-plan/qwen-plus'])
-    b.openSession.mockImplementationOnce(() => { throw new Error('not listed') })
     await injected.promptWithRoom('@Qwen-Plus look', ['qwen-token-plan/qwen-plus'])
     badge.selectHuman('bob')
     await injected.post('from bob')
@@ -1043,7 +1208,7 @@ describe('collaboration-room browser plugin', () => {
       text: '@Qwen-Plus look',
       mentions: ['qwen-token-plan/qwen-plus'],
     })
-    expect(b.openSession).toHaveBeenCalledWith('child-a')
+    expect(b.openSession).not.toHaveBeenCalledWith('child-a')
     expect(source).toMatchObject({ trigger: '@', name: 'models', order: -10 })
     await vi.waitFor(async () => {
       const listed = await source!.candidates({ sessionId: 'sess-1' as SessionId }, {

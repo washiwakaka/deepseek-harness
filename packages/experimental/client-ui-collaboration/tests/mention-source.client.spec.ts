@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { ActorRosterStore } from '../src/client/actor-roster.ts'
 import type { CollaborationRoomKey } from '../src/client/locales.ts'
-import { collaborationMentionSource, MENTION_SOURCE_NAME, modelMentionIds } from '../src/client/mention-source.ts'
+import { collaborationMentionSource, MENTION_SOURCE_NAME, roomMentionIds } from '../src/client/mention-source.ts'
 
 const session = { sessionId: 'sess-1' as SessionId }
 const t = (key: CollaborationRoomKey) => {
@@ -106,7 +106,7 @@ describe('collaboration @ model source', () => {
   })
 
   it('collects unique model chip refs in order', () => {
-    expect(modelMentionIds([
+    expect(roomMentionIds([
       { source: 'models', ref: 'qwen-token-plan/qwen-plus' },
       { source: 'sessions', ref: 'sess-2' },
       { source: 'models', ref: 'alice' },

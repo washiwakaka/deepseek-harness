@@ -175,9 +175,10 @@ export class CollaborationService extends Service {
   protected async [Service.init](): Promise<void> {
     const handle = await this.ctx.sessionProjections.register(collaborationProjectionDefinition)
     this.journal = new CollaborationJournal(this.ctx, handle)
-    this.ctx.effect(() => () => {
-      for (const child of this.childHandles.values()) void child.dispose()
+    this.ctx.effect(() => async () => {
+      const handles = [...this.childHandles.values()]
       this.childHandles.clear()
+      await Promise.all(handles.map(handle => handle.dispose()))
     }, 'collaboration.childHandles()')
   }
 
@@ -202,6 +203,8 @@ export class CollaborationService extends Service {
    * Append one room line. Human mentions admit those occupants; AI mentions start a branch.
    * @param session - exact live room Session.
    * @param request - author, text, and optional human or AI mentions.
+   * The child Session is private to the posting human. The reply stays on
+   * the branch until that human calls {@link publishFromChild}.
    * @returns started branch Session ids; empty when no AI was mentioned.
    */
   async postMessage(session: Session, request: PostMessageRequest): Promise<PostMessageResult> {
@@ -243,7 +246,7 @@ export class CollaborationService extends Service {
         throw new CollaborationError('room has no events to compile', 'COLLAB_EMPTY_ROOM')
       }
       for (const recipient of resolved.ais) {
-        childSessionIds.push(await this.startActor(session, recipient, throughSeq))
+        childSessionIds.push(await this.startActor(session, author, recipient, throughSeq))
       }
     })
     return { childSessionIds }
@@ -278,6 +281,13 @@ export class CollaborationService extends Service {
       throw new CollaborationError(`room "${mention.roomId}" is not live`, 'COLLAB_CHILD_MISSING')
     }
     this.assertCanAccess(roomAgent.session, publisher)
+    const owner = this.journal.state(roomAgent.session).childOwners[child.id]
+    if (owner !== undefined && owner !== publisher.id) {
+      throw new CollaborationError(
+        `actor "${publisher.id}" does not own branch "${child.id}"`,
+        'COLLAB_ACCESS_DENIED',
+      )
+    }
     const recipient = this.publishedActor(mention.actorId)
     const reply = assistantText(child)
     if (reply.length === 0) {
@@ -420,54 +430,47 @@ export class CollaborationService extends Service {
     const humans: ResolvedHumanActor[] = []
     const ais: ResolvedAiActor[] = []
     const seen = new Set<string>()
+    let catalog: readonly ResolvedAiActor[] | undefined
     for (const id of mentions) {
       if (seen.has(id)) continue
       seen.add(id)
-      const resolved = await this.resolveMention(author, id)
-      if (resolved.kind === 'human') humans.push(resolved)
-      else ais.push(resolved)
+      const configured = this.actorsById.get(id)
+      if (configured !== undefined) {
+        if (configured.kind === 'human') humans.push(configured)
+        else ais.push(configured)
+        continue
+      }
+      const route = parseMentionRoute(id)
+      if (route === undefined || !humanMayUseProvider(author, route.provider)) {
+        throw new CollaborationError(`unknown actor "${id}"`, 'COLLAB_UNKNOWN_ACTOR')
+      }
+      catalog ??= await listCatalogMentions(this.ctx.llm, author)
+      const match = catalog.find(row => row.id === id)
+      if (match === undefined) {
+        throw new CollaborationError(`unknown actor "${id}"`, 'COLLAB_UNKNOWN_ACTOR')
+      }
+      ais.push(match)
     }
     return { humans, ais }
   }
 
   /**
-   * Resolve one mention as a Config human, Config AI occupant, or a Settings route this human may use.
-   * @param author - posting human.
-   * @param id - Config occupant id, or `{provider}/{model}`.
-   * @returns the resolved human or AI recipient.
-   */
-  private async resolveMention(
-    author: ResolvedHumanActor,
-    id: ActorId,
-  ): Promise<ResolvedHumanActor | ResolvedAiActor> {
-    const configured = this.actorsById.get(id)
-    if (configured !== undefined) return configured
-    const route = parseMentionRoute(id)
-    if (route === undefined || !humanMayUseProvider(author, route.provider)) {
-      throw new CollaborationError(`unknown actor "${id}"`, 'COLLAB_UNKNOWN_ACTOR')
-    }
-    const match = (await listCatalogMentions(this.ctx.llm, author)).find(row => row.id === id)
-    if (match === undefined) {
-      throw new CollaborationError(`unknown actor "${id}"`, 'COLLAB_UNKNOWN_ACTOR')
-    }
-    return match
-  }
-
-  /**
    * Ensure the AI child exists, compile the per-actor delta, followup, and record the watermark.
    * @param session - live room Session.
+   * @param author - human who mentioned the model; owns the resulting branch.
    * @param recipient - AI occupant.
    * @param throughSeq - inclusive seq of the triggering mention.
    * @returns the branch Session id.
    */
   private async startActor(
     session: Session,
+    author: ResolvedHumanActor,
     recipient: ResolvedAiActor,
     throughSeq: SessionSeq,
   ): Promise<SessionId> {
-    const child = await this.ensureChild(session, recipient, throughSeq)
+    const child = await this.ensureChild(session, author, recipient, throughSeq)
     const state = this.journal.state(session)
-    const lastThroughSeq = watermarkOf(state, recipient.id)
+    const lastThroughSeq = watermarkOf(state, author.id, recipient.id)
     const task = compileMentionTask(
       state.messages,
       recipient,
@@ -489,6 +492,7 @@ export class CollaborationService extends Service {
       data: {
         version: 1,
         actorId: recipient.id,
+        ownerId: author.id,
         childSessionId: child.id,
         throughSeq,
       },
@@ -517,30 +521,26 @@ export class CollaborationService extends Service {
   }
 
   /**
-   * Create the AI child on first invoke, or return the live Agent already bound to it.
+   * Create the AI child on first invoke, resume it after a process restart, or
+   * return the live Agent already bound to it. One room keeps one child per AI
+   * occupant for that human; a different room or a different human always
+   * mints a new child.
    * @param session - live room Session.
+   * @param author - human who mentioned the model; owns the resulting branch.
    * @param recipient - AI occupant.
    * @param throughSeq - inclusive seq used as the first child's baseSeq.
    * @returns the live child Agent.
    */
   private async ensureChild(
     session: Session,
+    author: ResolvedHumanActor,
     recipient: ResolvedAiActor,
     throughSeq: SessionSeq,
   ): Promise<Agent> {
     const state = this.journal.state(session)
-    const existingId = childOf(state, recipient.id)
+    const existingId = childOf(state, author.id, recipient.id)
     if (existingId !== undefined) {
-      const live = this.ctx.agents.get(existingId)
-      if (live === undefined) {
-        throw new CollaborationError(
-          `AI child "${existingId}" is not live`,
-          'COLLAB_CHILD_MISSING',
-        )
-      }
-      this.nameBranch(session, live.session, recipient)
-      await this.ctx.sessions.flush(live.session)
-      return live
+      return await this.liveOrResumeChild(session, existingId, recipient)
     }
     await this.ctx.sessions.flush(session)
     const events = await this.readRoomEvents(session.id)
@@ -556,6 +556,7 @@ export class CollaborationService extends Service {
       meta: {
         ...session.header.cwd === undefined ? {} : { cwd: session.header.cwd },
         isSeeded: true,
+        parentSession: session.id,
       },
       agentOptions: { provider: recipient.provider, model: recipient.model },
     })
@@ -566,6 +567,7 @@ export class CollaborationService extends Service {
       data: {
         version: 1,
         actorId: recipient.id,
+        ownerId: author.id,
         childSessionId: childId,
         baseSeq: throughSeq,
       },
@@ -574,7 +576,43 @@ export class CollaborationService extends Service {
   }
 
   /**
-   * Name the branch after the model and attach it beside the room in the same Workspace.
+   * Return a live child Agent, or cold-resume the persisted Session after restart.
+   * @param room - live room Session that owns this child id.
+   * @param childId - projection child Session id.
+   * @param recipient - AI occupant bound to that child.
+   * @returns the live child Agent.
+   */
+  private async liveOrResumeChild(
+    room: Session,
+    childId: SessionId,
+    recipient: ResolvedAiActor,
+  ): Promise<Agent> {
+    const live = this.ctx.agents.get(childId)
+    if (live !== undefined) {
+      this.nameBranch(room, live.session, recipient)
+      await this.ctx.sessions.flush(live.session)
+      return live
+    }
+    let handle: AgentHandle
+    try {
+      handle = await this.ctx.agents.resume({
+        resumeSessionId: childId,
+        agentOptions: { provider: recipient.provider, model: recipient.model },
+      })
+    } catch (error) {
+      throw new CollaborationError(
+        `AI child "${childId}" is not live`,
+        'COLLAB_CHILD_MISSING',
+        { cause: error },
+      )
+    }
+    this.childHandles.set(childId, handle)
+    await this.presentBranch(room, handle.agent.session, recipient)
+    return handle.agent
+  }
+
+  /**
+   * Name the branch after the model and attach it after the room in the same Workspace.
    * @param room - live room Session.
    * @param child - newly created branch Session.
    * @param recipient - AI occupant this branch belongs to.
@@ -609,22 +647,29 @@ export class CollaborationService extends Service {
   }
 
   /**
-   * Put the branch on the room's Workspace, immediately before the room row.
+   * Put the branch on the room's Workspace, immediately after the room row.
    * @param room - live room Session.
    * @param child - live branch Session.
    */
   private async attachBranch(room: Session, child: Session): Promise<void> {
-    const workspace = this.ctx.get('workspaceRegistry')?.list()
-      .find(item => item.sessionIds.includes(room.id))
-    if (workspace === undefined) return
+    const listed = this.ctx.get('workspaceRegistry')?.list()
+      .find(item => item.sessionIds.includes(room.id) || item.sessionIds.includes(child.id))
+    if (listed === undefined) return
     try {
-      await workspace.attachSession(child.id)
+      await listed.attachSession(child.id)
     } catch (_attachFailed) {
       // The branch Agent is live; a Workspace attach miss must not refuse the room post.
       return
     }
+    const ids = listed.sessionIds.includes(child.id)
+      ? listed.sessionIds
+      : [child.id, ...listed.sessionIds]
+    const without = ids.filter(id => id !== child.id)
+    const roomAt = without.indexOf(room.id)
+    if (roomAt < 0) return
+    const anchor = without[roomAt + 1]
     try {
-      await workspace.insertSessionBefore(child.id, room.id)
+      await listed.insertSessionBefore(child.id, anchor)
     } catch (_orderFailed) {
       // Membership is enough for the sidebar; order is best-effort.
     }

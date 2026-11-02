@@ -16,7 +16,7 @@ import CollaborationService, {
   ROOM_USER_LABEL,
   branchTitle,
 } from '../src/index.ts'
-import { collaborationProjectionDefinition } from '../src/projection.ts'
+import { childOf, collaborationProjectionDefinition } from '../src/projection.ts'
 import type { CollaborationProjectionState } from '../src/projection.ts'
 
 const contexts: Context[] = []
@@ -46,18 +46,27 @@ const roster = [
   { id: 'model-b', kind: 'ai' as const, name: 'B', provider: 'mock', model: 'mock' },
 ]
 
-async function setup(script: ConstructorParameters<typeof MockAdapter>[0]) {
+async function mountCollab(storageRoot: string, script: ConstructorParameters<typeof MockAdapter>[0]) {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
-  const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-collab-mention-'))
-  roots.push(storageRoot)
   await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(CollaborationService, { actors: roster })
   ctx.llm.registerAdapter(['mock'], new MockAdapter(script))
+  return ctx
+}
+
+async function setupAt(storageRoot: string, script: ConstructorParameters<typeof MockAdapter>[0]) {
+  const ctx = await mountCollab(storageRoot, script)
   const room = await ctx.agentLoop.create(SessionId('room'), { provider: 'mock', model: 'mock' })
   return { ctx, room }
+}
+
+async function setup(script: ConstructorParameters<typeof MockAdapter>[0]) {
+  const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-collab-mention-'))
+  roots.push(storageRoot)
+  return setupAt(storageRoot, script)
 }
 
 function send(agent: Awaited<ReturnType<typeof setup>>['room'], text: string): void {
@@ -80,6 +89,14 @@ function project(session: {
   return state
 }
 
+function childFor(
+  session: Parameters<typeof project>[0],
+  owner: string,
+  actor: string,
+): SessionId | undefined {
+  return childOf(project(session), ActorId(owner), ActorId(actor))
+}
+
 describe('collaboration mentions', () => {
   it('forks A once, compiles prior lines, keeps the reply on the branch, and deltas the next @', async () => {
     const { ctx, room } = await setup([
@@ -97,7 +114,7 @@ describe('collaboration mentions', () => {
     })
     const afterFirst = project(room.session)
     expect(Object.keys(afterFirst.children)).toHaveLength(1)
-    const childId = afterFirst.children[ActorId('model-a')]
+    const childId = childOf(afterFirst, ActorId('alice'), ActorId('model-a'))
     expect(first.childSessionIds).toEqual([childId])
     expect(childId).toBeDefined()
     const child = ctx.agents.get(childId!)
@@ -111,6 +128,12 @@ describe('collaboration mentions', () => {
     expect(afterFirst.messages.map(message => message.text)).toEqual([
       'hello',
       '@A please look',
+    ])
+    await ctx.collaboration.publishFromChild(child.session, ActorId('alice'))
+    expect(project(room.session).messages.map(message => message.text)).toEqual([
+      'hello',
+      '@A please look',
+      'A first',
     ])
     expect(room.session.snapshotEvents().some(event => event.type === 'tool/call')).toBe(false)
 
@@ -135,11 +158,21 @@ describe('collaboration mentions', () => {
     expect(afterSecond.messages.map(message => message.text)).toEqual([
       'hello',
       '@A please look',
+      'A first',
       'more context',
       '@A again',
     ])
-    await ctx.collaboration.publishFromChild(child!.session, ActorId('alice'))
-    expect(project(room.session).messages.at(-1)).toMatchObject({
+    await ctx.collaboration.publishFromChild(child.session, ActorId('alice'))
+    const published = project(room.session)
+    expect(published.messages.map(message => message.text)).toEqual([
+      'hello',
+      '@A please look',
+      'A first',
+      'more context',
+      '@A again',
+      'A second',
+    ])
+    expect(published.messages.at(-1)).toMatchObject({
       kind: 'ai',
       name: 'A',
       text: 'A second',
@@ -158,7 +191,7 @@ describe('collaboration mentions', () => {
       text: '@A please look',
       mentions: [ActorId('model-a')],
     })
-    const childId = project(room.session).children[ActorId('model-a')]
+    const childId = childFor(room.session, 'alice', 'model-a')
     const child = ctx.agents.get(childId!)
     await child!.whenIdle()
     const mentionTask = child!.session.deriveMessages().find(
@@ -170,7 +203,7 @@ describe('collaboration mentions', () => {
     }])
   })
 
-  it('gives B the full room-visible transcript without unpublished branch replies', async () => {
+  it('gives B the full room-visible transcript including the published A reply', async () => {
     const { ctx, room } = await setup([
       textResponse('A first'),
       textResponse('B first'),
@@ -180,6 +213,10 @@ describe('collaboration mentions', () => {
       text: '@A',
       mentions: [ActorId('model-a')],
     })
+    const childA = ctx.agents.get(childFor(room.session, 'alice', 'model-a')!)
+    await childA!.whenIdle()
+    expect(project(room.session).messages.map(message => message.text)).toEqual(['@A'])
+    await ctx.collaboration.publishFromChild(childA!.session, ActorId('alice'))
     await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
       text: '@B',
@@ -187,11 +224,11 @@ describe('collaboration mentions', () => {
     })
     const state = project(room.session)
     expect(Object.keys(state.children)).toHaveLength(2)
-    const childB = ctx.agents.get(state.children[ActorId('model-b')]!)
+    const childB = ctx.agents.get(childOf(state, ActorId('alice'), ActorId('model-b'))!)
     const task = childB!.session.deriveMessages().find(message => message.role === 'user')
     expect(task?.content).toEqual([{
       type: 'text',
-      text: `${COLLABORATION_MENTION_INSTRUCTION.replace('{name}', 'B')}\n\n[Alice] @A\n[Alice] @B`,
+      text: `${COLLABORATION_MENTION_INSTRUCTION.replace('{name}', 'B')}\n\n[Alice] @A\n[A] A first\n[Alice] @B`,
     }])
     expect(childB!.session.snapshotEvents().some(event => event.type === 'tool/call')).toBe(false)
   })
@@ -210,13 +247,13 @@ describe('collaboration mentions', () => {
       mentions: [ActorId('mock/mock')],
     })
     const state = project(room.session)
-    const childId = state.children[ActorId('mock/mock')]
+    const childId = childOf(state, ActorId('alice'), ActorId('mock/mock'))
     expect(posted.childSessionIds).toEqual([childId])
     expect(childId).toBeDefined()
     const child = ctx.agents.get(childId!)
     expect(child?.options).toMatchObject({ provider: 'mock', model: 'mock' })
-    expect(state.messages.map(message => message.text)).not.toContain('from catalog')
     await child!.whenIdle()
+    expect(project(room.session).messages.map(message => message.text)).not.toContain('from catalog')
     await ctx.collaboration.publishFromChild(child!.session, ActorId('alice'))
     expect(project(room.session).messages.map(message => message.text)).toContain('from catalog')
   })
@@ -234,12 +271,46 @@ describe('collaboration mentions', () => {
     expect(state.messages[0]?.mentions).toEqual([ActorId('bob')])
   })
 
+  it('gives each human a private child for the same model and refuses another occupant publishing it', async () => {
+    const { ctx, room } = await setup([
+      textResponse('from bob'),
+      textResponse('from alice'),
+    ])
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@Bob look',
+      mentions: [ActorId('bob')],
+    })
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('bob'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    const state = project(room.session)
+    const bobChild = childOf(state, ActorId('bob'), ActorId('model-a'))
+    const aliceChild = childOf(state, ActorId('alice'), ActorId('model-a'))
+    expect(bobChild).toBeDefined()
+    expect(aliceChild).toBeDefined()
+    expect(aliceChild).not.toBe(bobChild)
+    expect(state.childOwners[bobChild!]).toBe(ActorId('bob'))
+    expect(state.childOwners[aliceChild!]).toBe(ActorId('alice'))
+    const bobAgent = ctx.agents.get(bobChild!)
+    expect(bobAgent).toBeDefined()
+    await expect(ctx.collaboration.publishFromChild(bobAgent!.session, ActorId('alice')))
+      .rejects.toMatchObject({ code: 'COLLAB_ACCESS_DENIED' })
+  })
+
   it('refuses publish on the room Session', async () => {
     const { ctx, room } = await setup([])
     await expect(ctx.collaboration.publishFromChild(room.session, ActorId('alice'))).rejects.toThrow(/not a collaboration branch/)
   })
 
-  it('names a branch from the room title and model, and attaches it beside the room', async () => {
+  it('names a branch from the room title and model, and attaches it under the room', async () => {
     expect(branchTitle(undefined, 'Qwen-Plus')).toBe('Qwen-Plus')
     expect(branchTitle('  ', 'Qwen-Plus')).toBe('Qwen-Plus')
     expect(branchTitle('Design review', 'Qwen-Plus')).toBe('Qwen-Plus · Design review')
@@ -267,10 +338,12 @@ describe('collaboration mentions', () => {
       text: '@A',
       mentions: [ActorId('model-a')],
     })
-    const childId = project(room.session).children[ActorId('model-a')]
+    const childId = childFor(room.session, 'alice', 'model-a')
     expect(rename).toHaveBeenCalledWith(expect.objectContaining({ id: childId }), 'A · Design review')
     expect(attachSession).toHaveBeenCalledWith(childId)
-    expect(insertSessionBefore).toHaveBeenCalledWith(childId, room.session.id)
+    expect(insertSessionBefore).toHaveBeenCalledWith(childId, undefined)
+    expect(ctx.agents.get(childId!)?.session.header.parentSession).toBe(room.session.id)
+    expect(ctx.agents.get(childId!)?.session.header.origin).toBeUndefined()
     rename.mockClear()
     titleOf = (session: { id: string }) => session.id === room.session.id
       ? { title: 'Design review', source: { kind: 'user' as const } }
@@ -301,6 +374,115 @@ describe('collaboration mentions', () => {
       mentions: [ActorId('model-a')],
     })
     expect(rename).not.toHaveBeenCalled()
+  })
+
+  it('opens a new child when the same model is mentioned from a second room', async () => {
+    const { ctx, room } = await setup([
+      textResponse('A in first'),
+      textResponse('A in second'),
+    ])
+    const other = await ctx.agentLoop.create(SessionId('room-two'), { provider: 'mock', model: 'mock' })
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    await ctx.collaboration.postMessage(other.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    const first = childFor(room.session, 'alice', 'model-a')
+    const second = childFor(other.session, 'alice', 'model-a')
+    expect(first).toBeDefined()
+    expect(second).toBeDefined()
+    expect(second).not.toBe(first)
+    expect(ctx.agents.get(first!)?.session.header.parentSession).toBe(room.session.id)
+    expect(ctx.agents.get(second!)?.session.header.parentSession).toBe(other.session.id)
+  })
+
+  it('cold-resumes the persisted AI child after the Host process restarts', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-collab-resume-'))
+    roots.push(storageRoot)
+    const first = await setupAt(storageRoot, [
+      textResponse('A first'),
+      textResponse('A after restart'),
+    ])
+    await first.ctx.collaboration.postMessage(first.room.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    const childId = childFor(first.room.session, 'alice', 'model-a')
+    expect(childId).toBeDefined()
+    const roomId = first.room.session.id
+    const firstIndex = contexts.indexOf(first.ctx)
+    if (firstIndex >= 0) contexts.splice(firstIndex, 1)
+    await first.ctx.fiber.dispose()
+    const ctx2 = await mountCollab(storageRoot, [textResponse('A after restart')])
+    expect(ctx2.agents.get(childId!)).toBeUndefined()
+    const insertSessionBefore = vi.fn(async () => {})
+    stubService(ctx2, 'workspaceRegistry', {
+      list: () => [{
+        sessionIds: [childId!],
+        attachSession: async () => {},
+        insertSessionBefore,
+      }],
+    })
+    const room = (await ctx2.agents.resume({ resumeSessionId: roomId })).agent
+    await ctx2.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A again',
+      mentions: [ActorId('model-a')],
+    })
+    expect(childFor(room.session, 'alice', 'model-a')).toBe(childId)
+    expect(insertSessionBefore).not.toHaveBeenCalled()
+    const live = ctx2.agents.get(childId!)
+    expect(live).toBeDefined()
+    await live!.whenIdle()
+    const userTurns = live!.session.deriveMessages().filter(message => message.role === 'user')
+    expect(userTurns).toHaveLength(2)
+  })
+
+  it('keeps COLLAB_CHILD_MISSING when the persisted child cannot resume', async () => {
+    const { ctx, room } = await setup([textResponse('A first')])
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    vi.spyOn(ctx.agents, 'get').mockReturnValue(undefined)
+    vi.spyOn(ctx.agents, 'resume').mockRejectedValue(new Error('missing log'))
+    await expect(ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A again',
+      mentions: [ActorId('model-a')],
+    })).rejects.toMatchObject({ code: 'COLLAB_CHILD_MISSING' })
+  })
+
+  it('places the branch after the room when the Workspace already lists the child', async () => {
+    const { ctx, room } = await setup([textResponse('A first')])
+    const sessionIds: SessionId[] = [room.session.id]
+    const insertSessionBefore = vi.fn(async () => {})
+    stubService(ctx, 'workspaceRegistry', {
+      list: () => [{
+        get sessionIds() {
+          return sessionIds
+        },
+        attachSession: async (id: SessionId) => {
+          if (!sessionIds.includes(id)) sessionIds.unshift(id)
+        },
+        insertSessionBefore,
+      }],
+    })
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    const childId = childFor(room.session, 'alice', 'model-a')
+    expect(insertSessionBefore).toHaveBeenCalledWith(childId, undefined)
+    expect(insertSessionBefore).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the room post when branch title or workspace attach fails', async () => {

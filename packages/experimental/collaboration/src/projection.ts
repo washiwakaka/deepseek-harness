@@ -49,6 +49,7 @@ const branchOpenedEventSchema = z.object({
   actorId: actorIdSchema,
   childSessionId: sessionIdSchema,
   baseSeq: sessionSeqSchema,
+  ownerId: actorIdSchema.optional(),
 }).strict() as z.ZodType<SessionEventMap['collaboration/branch-opened']>
 
 const actorInvokedEventSchema = z.object({
@@ -56,7 +57,25 @@ const actorInvokedEventSchema = z.object({
   actorId: actorIdSchema,
   childSessionId: sessionIdSchema,
   throughSeq: sessionSeqSchema,
+  ownerId: actorIdSchema.optional(),
 }).strict() as z.ZodType<SessionEventMap['collaboration/actor-invoked']>
+
+/** Children and watermark map key: one human's invoke of one AI. */
+const BRANCH_KEY_SEP = '\x1f'
+
+/**
+ * Stable map key for one human's child of one AI occupant.
+ * @param ownerId - human who mentioned the model.
+ * @param actorId - AI occupant.
+ * @returns the projection `children` / `watermarks` key.
+ */
+export function branchKey(ownerId: ActorId, actorId: ActorId): string {
+  return `${ownerId}${BRANCH_KEY_SEP}${actorId}`
+}
+
+function childKey(actorId: ActorId, ownerId: ActorId | undefined): string {
+  return ownerId === undefined ? actorId : branchKey(ownerId, actorId)
+}
 
 /** Checkpoint-safe room state owned by the projected Session. */
 export interface CollaborationProjectionState {
@@ -64,6 +83,7 @@ export interface CollaborationProjectionState {
   readonly children: Readonly<Record<string, SessionId>>
   readonly watermarks: Readonly<Record<string, SessionSeq>>
   readonly occupants: readonly ActorId[]
+  readonly childOwners: Readonly<Record<string, ActorId>>
   readonly failure?: string
 }
 
@@ -72,7 +92,7 @@ export interface CollaborationProjectionState {
  * @returns empty collaboration state.
  */
 export function emptyCollaborationState(): CollaborationProjectionState {
-  return { messages: [], children: {}, watermarks: {}, occupants: [] }
+  return { messages: [], children: {}, watermarks: {}, occupants: [], childOwners: {} }
 }
 
 const occupantEventSchema = z.object({
@@ -85,6 +105,7 @@ const collaborationStateSchema = z.object({
   children: z.record(z.string(), sessionIdSchema),
   watermarks: z.record(z.string(), sessionSeqSchema),
   occupants: z.array(actorIdSchema),
+  childOwners: z.record(z.string(), actorIdSchema).default({}),
   failure: z.string().optional(),
 }).strict() as z.ZodType<CollaborationProjectionState>
 
@@ -93,6 +114,7 @@ const collaborationViewSchema = z.object({
   children: z.record(z.string(), sessionIdSchema),
   watermarks: z.record(z.string(), sessionSeqSchema),
   occupants: z.array(actorIdSchema),
+  childOwners: z.record(z.string(), actorIdSchema).default({}),
   failure: z.string().optional(),
 }).strict() as z.ZodType<CollaborationProjection>
 
@@ -177,21 +199,29 @@ function applyCurrentEvent(
     }
     case 'collaboration/branch-opened': {
       const data = parsePersisted(event.type, branchOpenedEventSchema, event.data)
-      if (state.children[data.actorId] !== undefined) {
-        throw new Error(`collaboration child for "${data.actorId}" was opened twice`)
+      const key = childKey(data.actorId, data.ownerId)
+      if (state.children[key] !== undefined) {
+        throw new Error(`collaboration child for "${key}" was opened twice`)
       }
-      return { ...state, children: { ...state.children, [data.actorId]: data.childSessionId } }
+      return {
+        ...state,
+        children: { ...state.children, [key]: data.childSessionId },
+        ...data.ownerId === undefined
+          ? {}
+          : { childOwners: { ...state.childOwners, [data.childSessionId]: data.ownerId } },
+      }
     }
     case 'collaboration/actor-invoked': {
       const data = parsePersisted(event.type, actorInvokedEventSchema, event.data)
-      const child = state.children[data.actorId]
+      const key = childKey(data.actorId, data.ownerId)
+      const child = state.children[key]
       if (child === undefined) {
-        throw new Error(`collaboration actor "${data.actorId}" was invoked before a child opened`)
+        throw new Error(`collaboration actor "${key}" was invoked before a child opened`)
       }
       if (child !== data.childSessionId) {
-        throw new Error(`collaboration actor "${data.actorId}" invoked a different child`)
+        throw new Error(`collaboration actor "${key}" invoked a different child`)
       }
-      return { ...state, watermarks: { ...state.watermarks, [data.actorId]: data.throughSeq } }
+      return { ...state, watermarks: { ...state.watermarks, [key]: data.throughSeq } }
     }
     /* v8 ignore next 2 -- CollaborationEventType is closed and every member is handled above. */
     default:
@@ -210,6 +240,7 @@ export function collaborationProjectionView(state: CollaborationProjectionState)
     children: state.children,
     watermarks: state.watermarks,
     occupants: state.occupants,
+    childOwners: state.childOwners,
     ...state.failure === undefined ? {} : { failure: state.failure },
   }
 }
@@ -217,7 +248,7 @@ export function collaborationProjectionView(state: CollaborationProjectionState)
 /** Room projection selected by the projected Session identity. */
 export const collaborationProjectionDefinition = {
   key: 'collaboration',
-  stateVersion: 2,
+  stateVersion: 3,
   stateSchema: collaborationStateSchema,
   init: (_header, _inheritedEventCount) => emptyCollaborationState(),
   apply: applyProjectionEvent,
@@ -225,29 +256,39 @@ export const collaborationProjectionDefinition = {
 } satisfies ProjectionDefinition<'collaboration', CollaborationProjectionState>
 
 /**
- * Latest compiled-through seq for one AI occupant, if any.
+ * Latest compiled-through seq for one human's invoke of one AI occupant, if any.
  * @param state - current room state.
+ * @param ownerId - human who mentioned the model.
  * @param actorId - AI occupant.
- * @returns the watermark seq, or `undefined` when that occupant has never been invoked.
+ * @returns the watermark seq, or `undefined` when that occupant has never been invoked by this human.
  */
 export function watermarkOf(
   state: CollaborationProjectionState,
+  ownerId: ActorId,
   actorId: ActorId,
 ): SessionSeq | undefined {
-  return state.watermarks[actorId]
+  return state.watermarks[branchKey(ownerId, actorId)] ?? state.watermarks[actorId]
 }
 
 /**
- * Persistent child Session for one AI occupant, if any.
+ * Persistent child Session for one human's invoke of one AI occupant, if any.
  * @param state - current room state.
+ * @param ownerId - human who mentioned the model.
  * @param actorId - AI occupant.
- * @returns the child Session identity, or `undefined` before the first invoke.
+ * @returns the child Session identity, or `undefined` before this human's first invoke.
  */
 export function childOf(
   state: CollaborationProjectionState,
+  ownerId: ActorId,
   actorId: ActorId,
 ): SessionId | undefined {
-  return state.children[actorId]
+  const owned = state.children[branchKey(ownerId, actorId)]
+  if (owned !== undefined) return owned
+  const shared = state.children[actorId]
+  if (shared === undefined) return undefined
+  const recorded = state.childOwners[shared]
+  if (recorded !== undefined && recorded !== ownerId) return undefined
+  return shared
 }
 
 export type { CollaborationMessageId }

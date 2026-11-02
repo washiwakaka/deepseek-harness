@@ -6,10 +6,12 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 interface CollaborationListView {
   readonly occupants?: readonly string[]
   readonly children?: Readonly<Record<string, string>>
+  readonly childOwners?: Readonly<Record<string, string>>
 }
 
 /**
- * Whether this human may see one Session: occupant, or an in-flight claim, plus that room's branches.
+ * Whether this human may see one Session: occupant, or an in-flight claim,
+ * plus AI branches this human opened. Other occupants' branches stay hidden.
  * Unclaimed Sessions stay hidden until this human claims them.
  * @param humanId - current test author.
  * @param list - Host session catalog, including collaboration projections.
@@ -60,15 +62,43 @@ export function visibleIds(
   while (grew) {
     grew = false
     for (const id of [...visible]) {
-      const children = collaborationOf(list, id)?.children ?? {}
+      const room = collaborationOf(list, id)
+      const children = room?.children ?? {}
+      const owners = room?.childOwners ?? {}
       for (const child of Object.values(children)) {
         if (visible.has(child)) continue
+        const owner = owners[child]
+        if (owner !== undefined && owner !== humanId) continue
         visible.add(child)
         grew = true
       }
     }
   }
   return visible
+}
+
+/**
+ * Whether this Session is an AI branch this human may publish from.
+ * @param humanId - current test author.
+ * @param list - Host session catalog, including collaboration projections.
+ * @param sessionId - candidate branch Session.
+ */
+export function isOwnedBranch(
+  humanId: string | undefined,
+  list: SessionListState,
+  sessionId: SessionId | string,
+): boolean {
+  if (humanId === undefined) return false
+  const ids = new Set<string>([...list.ids, ...Object.keys(list.projectionsBySession)])
+  for (const id of ids) {
+    const room = collaborationOf(list, id)
+    const children = Object.values(room?.children ?? {})
+    if (!children.includes(sessionId)) continue
+    const owner = room?.childOwners?.[sessionId]
+    if (owner === undefined) return room?.occupants?.includes(humanId) === true
+    return owner === humanId
+  }
+  return false
 }
 
 function collaborationOf(list: SessionListState, id: string): CollaborationListView | undefined {

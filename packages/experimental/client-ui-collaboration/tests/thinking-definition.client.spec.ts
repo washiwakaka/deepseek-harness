@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { collaborationThinkingDefinition } from '../src/client/thinking-definition.ts'
 
 describe('collaboration-thinking Conversation Definition', () => {
-  it('starts from actor-invoked, hides on that AI room line, and ignores other events', () => {
+  it('does not start from actor-invoked, hides on that AI room line, and ignores other events', () => {
     const invoked = {
       type: 'collaboration/actor-invoked' as const,
       seq: 5,
@@ -26,10 +26,7 @@ describe('collaboration-thinking Conversation Definition', () => {
         mentions: [],
       },
     }
-    expect(collaborationThinkingDefinition.match(invoked as never)).toEqual({
-      id: 'think:qwen-token-plan/qwen-plus',
-      role: 'start',
-    })
+    expect(collaborationThinkingDefinition.match(invoked as never)).toBeNull()
     expect(collaborationThinkingDefinition.match(reply as never)).toEqual({
       id: 'think:qwen-token-plan/qwen-plus',
       role: 'update',

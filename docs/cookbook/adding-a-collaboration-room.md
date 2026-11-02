@@ -66,7 +66,52 @@ Peer chat must not use `user/message`. The loop admits inbox messages onto the s
       },
 ```
 
-Copied `collaboration/*` events still lack `surfaceOp`, so the child Agent still cannot see them through `deriveMessages()`. Inherited room `user/message` and `assistant/message` events are also outside the child's own history. A mention dispatcher must compile room posts and those room-Agent turns into one `UserMessage` per mentioned AI, call `Agent.followup` on that occupant's persistent child, and record `throughSeq` on `collaboration/actor-invoked`. First @ of that AI also `agents.create`s with `buildForkSeed` and writes `collaboration/branch-opened`. Do not set `origin: 'subagent'`. The compiler is per-actor: A's second @ sends only events after A's watermark; B's first @ sends the full room-visible transcript, including A's published reply, never A's child tools. The answer stays on the branch until `publishFromChild` copies latest assistant text onto the room. Agent Teams already stores non-surface plugin events this way: declaration merge in `packages/experimental/agent-team/src/types.ts`, append-without-surface in `TeamJournal.appendAndFlush`, and opt-in overlay rows in `packages/experimental/agent-team-profile/cordis.patch.yml`. LiveShare is not this pattern: a viewer prompt is a source-Session `user/message`.
+Copied `collaboration/*` events still lack `surfaceOp`, so the child Agent still cannot see them through `deriveMessages()`. Inherited room `user/message` and `assistant/message` events are also outside the child's own history. A mention dispatcher must compile room posts and those room-Agent turns into one `UserMessage` per mentioned AI, call `Agent.followup` on that occupant's persistent child, and record `throughSeq` on `collaboration/actor-invoked`. First @ of that AI also `agents.create`s with `buildForkSeed` and writes `collaboration/branch-opened` with the mentioning human as `ownerId`. Stamp `meta.parentSession` to the room so the sidebar can nest the branch; do not set `origin: 'subagent'`. The same room reuses that child for the same human; another occupant's @ of the same model opens a private child only that human can see. A later @ after process restart `agents.resume`s it. The compiler is per-actor: A's second @ sends only events after A's watermark; B's first @ sends the full room-visible transcript, including A's published reply, never A's child tools. The answer stays on the branch until `publishFromChild` copies latest assistant text onto the room. Agent Teams already stores non-surface plugin events this way: declaration merge in `packages/experimental/agent-team/src/types.ts`, append-without-surface in `TeamJournal.appendAndFlush`, and opt-in overlay rows in `packages/experimental/agent-team-profile/cordis.patch.yml`. LiveShare is not this pattern: a viewer prompt is a source-Session `user/message`.
+
+```575:585:packages/experimental/collaboration/src/index.ts
+    const handle = await this.ctx.agents.create({
+      sessionId: childId,
+      seed: buildForkSeed(events, boundary),
+      inheritedEventCount: SessionLogOffset(boundary + 1),
+      meta: {
+        ...session.header.cwd === undefined ? {} : { cwd: session.header.cwd },
+        isSeeded: true,
+        parentSession: session.id,
+      },
+      agentOptions: { provider: recipient.provider, model: recipient.model },
+    })
+```
+
+```608:635:packages/experimental/collaboration/src/index.ts
+  private async liveOrResumeChild(
+    room: Session,
+    childId: SessionId,
+    recipient: ResolvedAiActor,
+  ): Promise<Agent> {
+    const live = this.ctx.agents.get(childId)
+    if (live !== undefined) {
+      this.nameBranch(room, live.session, recipient)
+      await this.ctx.sessions.flush(live.session)
+      return live
+    }
+    let handle: AgentHandle
+    try {
+      handle = await this.ctx.agents.resume({
+        resumeSessionId: childId,
+        agentOptions: { provider: recipient.provider, model: recipient.model },
+      })
+    } catch (error) {
+      throw new CollaborationError(
+        `AI child "${childId}" is not live`,
+        'COLLAB_CHILD_MISSING',
+        { cause: error },
+      )
+    }
+    this.childHandles.set(childId, handle)
+    await this.presentBranch(room, handle.agent.session, recipient)
+    return handle.agent
+  }
+```
 
 -----
 

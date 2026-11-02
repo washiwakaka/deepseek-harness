@@ -55,7 +55,7 @@ export interface ActorConfig {
 export interface Config {
   /**
    * Human authors and optional Config AI occupants.
-   * Omit to use Alice/Bob with per-human provider allowlists; Clients list `@` models through `listMentionModels`.
+   * Omit to use Alice–James overlay humans; Clients list `@` models through `listMentionModels`.
    */
   readonly actors?: ActorConfig[]
   /** Maximum UTF-8 bytes in one room message. */
@@ -114,6 +114,11 @@ export interface CollaborationProjection {
   readonly watermarks: Readonly<Record<string, SessionSeq>>
   /** Humans who may see and operate on this room, creator first. */
   readonly occupants: readonly ActorId[]
+  /**
+   * Human who opened each AI child Session. Missing on logs from before
+   * per-invoker branches; those children stay visible to every occupant.
+   */
+  readonly childOwners?: Readonly<Record<string, ActorId>>
   readonly failure?: string
 }
 
@@ -159,6 +164,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       actorId: ActorId
       childSessionId: SessionId
       baseSeq: SessionSeq
+      /** Human who @-mentioned this model; omitted on older room logs. */
+      ownerId?: ActorId
     }
     /** One @ invoke of an AI occupant, recording the compiled-through seq. */
     'collaboration/actor-invoked': {
@@ -166,6 +173,8 @@ declare module '@deepseek-ai/dsh-session/types' {
       actorId: ActorId
       childSessionId: SessionId
       throughSeq: SessionSeq
+      /** Human who @-mentioned this model; omitted on older room logs. */
+      ownerId?: ActorId
     }
     /** One human admitted to this room: the creator, or a later @-invite. */
     'collaboration/occupant': {

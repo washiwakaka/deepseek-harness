@@ -115,6 +115,17 @@ function inputState(overrides: {
   }
 }
 
+const emptyList = {
+  ids: [],
+  byId: {},
+  phase: 'ready' as const,
+  projectionsBySession: {},
+}
+
+function selectList(list: typeof emptyList = emptyList) {
+  return ((select: (state: typeof emptyList) => unknown) => select(list)) as never
+}
+
 function renderPost(overrides: {
   draft?: string
   phase?: 'plain' | 'running'
@@ -158,6 +169,7 @@ function renderPost(overrides: {
       mentionModels: overrides.mentionModels ?? [],
       branchIds: overrides.branchIds ?? [],
     })}
+    useSessions={selectList()}
   /> as never)
   return { post, promptWithRoom, thinking, publish, setDraft }
 }
@@ -300,6 +312,31 @@ describe('collaboration-room views', () => {
     expect(setDraft).toHaveBeenCalledWith('')
   })
 
+  it('treats missing occurrences and mention models as empty', () => {
+    render(<PostButton
+      t={t}
+      useInput={(select: (state: InputState) => InputState) => select({
+        ...inputState({ draft: 'hello', phase: 'plain' }),
+        occurrences: undefined,
+      } as InputState)}
+      inputActions={{ setDraft: vi.fn() } as never}
+      sessionId={SessionId('room')}
+      post={vi.fn(async () => {})}
+      promptWithRoom={vi.fn(async () => {})}
+      publish={vi.fn(async () => {})}
+      thinking={vi.fn()}
+      useActors={(select: (snapshot: ActorRosterSnapshot) => unknown) => select({
+        actors: humans,
+        selectedHumanId: 'alice',
+        thinking: false,
+        branchIds: [],
+        selectedAiId: undefined,
+      })}
+      useSessions={selectList()}
+    /> as never)
+    expect(screen.getByRole('button', { name: 'Post the draft to the collaboration room' })).toBeTruthy()
+  })
+
   it('sends the trimmed draft with room context and clears it', async () => {
     const { promptWithRoom, setDraft, thinking } = renderPost({ draft: '  hello  ' })
     fireEvent.click(screen.getByRole('button', { name: "Send the draft and room transcript to this conversation's model" }))
@@ -366,6 +403,7 @@ describe('collaboration-room views', () => {
       promptWithRoom={vi.fn(async () => {})}
       thinking={thinking}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
+      useSessions={selectList()}
     /> as never)
     fireEvent.click(screen.getByRole('button', { name: 'Post the draft to the collaboration room' }))
     view.unmount()
@@ -386,6 +424,7 @@ describe('collaboration-room views', () => {
       promptWithRoom={vi.fn(async () => {})}
       thinking={vi.fn()}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
+      useSessions={selectList()}
     /> as never)
     fireEvent.click(screen.getByRole('button', { name: 'Post the draft to the collaboration room' }))
     view.unmount()
@@ -405,6 +444,7 @@ describe('collaboration-room views', () => {
       promptWithRoom={promptWithRoom}
       thinking={vi.fn()}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'alice' })}
+      useSessions={selectList()}
     /> as never)
     fireEvent.click(screen.getByRole('button', { name: "Send the draft and room transcript to this conversation's model" }))
     view.unmount()
@@ -419,6 +459,38 @@ describe('collaboration-room views', () => {
     fireEvent.click(screen.getByRole('button', { name: "Post this branch's latest answer to the collaboration room" }))
     await vi.waitFor(() => { expect(publish).toHaveBeenCalled() })
     expect(post).not.toHaveBeenCalled()
+  })
+
+  it('offers publish on a projected owned branch without a remembered id', () => {
+    const child = 'child-1'
+    render(<PostButton
+      t={t}
+      useInput={(select: (state: InputState) => InputState) => select(inputState({ draft: 'hello', phase: 'plain' }))}
+      inputActions={{ setDraft: vi.fn() } as never}
+      sessionId={SessionId(child)}
+      post={vi.fn(async () => {})}
+      promptWithRoom={vi.fn(async () => {})}
+      publish={vi.fn(async () => {})}
+      thinking={vi.fn()}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'bob', branchIds: [] })}
+      useSessions={selectList({
+        ids: ['room', child],
+        byId: {},
+        phase: 'ready',
+        projectionsBySession: {
+          room: {
+            values: {
+              collaboration: {
+                occupants: ['alice', 'bob'],
+                children: { k: child },
+                childOwners: { [child]: 'bob' },
+              },
+            },
+          },
+        },
+      })}
+    /> as never)
+    expect(screen.getByRole('button', { name: "Post this branch's latest answer to the collaboration room" })).toBeTruthy()
   })
 
   it('does not post a blank draft', () => {

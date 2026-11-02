@@ -71,7 +71,7 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 <a id="known-limitations-and-deferred-work"></a>
 
 - 本 overlay 不是 Official bundle，也没有插件管理器图标。
-- Composer 发送仍会 followup 房间 Agent；尚未注册 @ 选择器。
+- Composer 回车仍会 followup 房间 Agent；`@` 芯片由「发到房间」处理。
 
 <a id="dev-note"></a>
 ### 开发备注

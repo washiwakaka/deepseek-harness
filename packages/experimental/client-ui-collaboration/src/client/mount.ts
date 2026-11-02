@@ -35,9 +35,29 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Required browser services for Conversation nodes, slots, Remote posts, and localized copy. */
 export const inject = ['remote', 'uiConversation', 'slots', 'locale', 'inputTriggers', 'uiWorkspace', 'sessions']
 
+/**
+ * Remember mention branches without leaving the room Session.
+ * The sidebar nests the branch under that room via `parentSession`. The
+ * owner publishes from the branch when they want the reply on the room.
+ * @param actors - Client roster that tracks opened branch ids.
+ * @param ids - branch Session ids returned by a room post.
+ */
+function rememberMentionedBranches(
+  actors: ActorRosterStore,
+  ids: readonly string[],
+): void {
+  for (const id of ids) actors.addBranch(id)
+}
+
 function registerCollaborationUi(ctx: ClientContext): void {
-  ctx.uiConversation.events.register(collaborationMessageDefinition)
-  ctx.uiConversation.events.register(collaborationThinkingDefinition)
+  ctx.effect(
+    () => ctx.uiConversation.events.register(collaborationMessageDefinition),
+    'client-ui-collaboration: message definition',
+  )
+  ctx.effect(
+    () => ctx.uiConversation.events.register(collaborationThinkingDefinition),
+    'client-ui-collaboration: thinking definition',
+  )
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'client-ui-collaboration: dictionaries')
   const actors = new ActorRosterStore()
   const t = ctx.locale.bind(NS)
@@ -54,10 +74,15 @@ function registerCollaborationUi(ctx: ClientContext): void {
       listedHuman = humanId
       const token = ++generation
       void ctx.remote.collaboration.listMentionModels(humanId).then((result) => {
-        if (cancelled || token !== generation || !result.ok) return
+        if (cancelled || token !== generation) return
+        if (!result.ok) {
+          listedHuman = undefined
+          return
+        }
         actors.setMentionModels(result.value)
       }, () => {
-        if (cancelled) return
+        if (cancelled || token !== generation) return
+        listedHuman = undefined
       })
     }
     void ctx.remote.collaboration.listActors().then((result) => {
@@ -188,47 +213,31 @@ function registerCollaborationUi(ctx: ClientContext): void {
         },
         post: async (text, mentions = []) => {
           const snapshot = actors.getSnapshot()
-          const ids = await postRoomDraft(
+          rememberMentionedBranches(actors, await postRoomDraft(
             ctx.remote.collaboration,
             sessionId,
             text,
             snapshot.selectedHumanId,
             mentions.length > 0 ? mentions : undefined,
-          )
-          for (const id of ids) {
-            actors.addBranch(id)
-            try {
-              ctx.uiWorkspace.openSession(id as SessionId)
-            } catch (_openFailed) {
-              // The room line already landed; a missing catalog row must not look like a failed post.
-            }
-          }
+          ))
         },
         promptWithRoom: async (text, mentions = []) => {
           const snapshot = actors.getSnapshot()
           if (mentions.length > 0) {
-            const opened = await postRoomDraft(
+            rememberMentionedBranches(actors, await postRoomDraft(
               ctx.remote.collaboration,
               sessionId,
               text,
               snapshot.selectedHumanId,
               mentions,
-            )
-            for (const id of opened) {
-              actors.addBranch(id)
-              try {
-                ctx.uiWorkspace.openSession(id as SessionId)
-              } catch (_openFailed) {
-                // The room line already landed; a missing catalog row must not look like a failed post.
-              }
-            }
+            ))
             return
           }
           const humanId = snapshot.selectedHumanId
           if (humanId === undefined) return
           await sendWithRoom(ctx.remote.collaboration, sessionId, text, humanId)
         },
-        hooks: { actors },
+        hooks: { actors, sessions: ctx.sessions.list },
       }),
     }, RoomPostButton),
   )

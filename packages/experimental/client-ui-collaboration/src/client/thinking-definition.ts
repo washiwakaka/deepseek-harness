@@ -26,14 +26,15 @@ function thinkId(actorId: string): string {
   return `think:${actorId}`
 }
 
-/** Show a thinking row from invoke until that actor's auto-posted room line. */
+/**
+ * Hide the room thinking row once that AI's published room line arrives.
+ * Invoke itself does not start a room thinking row: work stays on the branch
+ * until the owner publishes.
+ */
 export const collaborationThinkingDefinition: ConversationNodeDefinition<CollaborationThinkingState> = {
   kind: 'collaboration-thinking',
   target: 'chat',
   match: (event) => {
-    if (event.type === 'collaboration/actor-invoked') {
-      return { id: thinkId(String(event.data.actorId)), role: 'start' }
-    }
     if (event.type === 'collaboration/message' && event.data.kind === 'ai') {
       return { id: thinkId(String(event.data.actorId)), role: 'update' }
     }

@@ -1097,7 +1097,7 @@ export interface Config {
 export interface Config {
   /**
    * Human authors and optional Config AI occupants.
-   * Omit to use Alice/Bob with per-human provider allowlists; Clients list `@` models through `listMentionModels`.
+   * Omit to use Alice–James overlay humans; Clients list `@` models through `listMentionModels`.
    */
   readonly actors?: ActorConfig[]
   /** Maximum UTF-8 bytes in one room message. */

@@ -1301,17 +1301,21 @@ describe('WorkspaceBrowser', () => {
     expect(unarchiveSession).toHaveBeenCalledWith(sid('gone'))
   })
 
-  it('renders a fork child as a top-level row without a session twist', () => {
+  it('renders a fork child with a polyline elbow and no session twist', () => {
     const parent = summary('parent-s', 2)
     const child = { ...summary('child-s', 1), parentId: parent.id }
     mount({
       useSessions: hook(sessionState([parent, child])),
-      useWorkspaces: hook(workspaceState([workspace('alpha', ['parent-s', 'child-s'])])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['child-s', 'parent-s'])])),
     })
     fireEvent.click(screen.getByText('alpha'))
     expect(screen.getByText('child-s')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /展开|收起/ })).toBeNull()
-    expect(screen.getByText('child-s').closest('[role="treeitem"]')?.getAttribute('draggable')).toBe('true')
+    const childRow = screen.getByText('child-s').closest('[role="treeitem"]')
+    expect(childRow?.getAttribute('draggable')).toBe('true')
+    expect(childRow?.getAttribute('aria-level')).toBe('2')
+    expect(childRow?.querySelector('[data-lineage="elbow"]')).toBeTruthy()
+    expect(screen.getByText('parent-s').closest('[role="treeitem"]')?.querySelector('[data-lineage]')).toBeNull()
   })
 
   it('expands the target group before starting a session from its ＋', () => {

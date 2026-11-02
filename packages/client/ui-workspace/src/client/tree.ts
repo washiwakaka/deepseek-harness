@@ -61,6 +61,20 @@ export interface SessionNode {
   updatedAt: number
   /** Session working directory; absent when the Host reports none or an empty path. */
   cwd?: string
+  /** Ordinary fork parent from the Host list; omitted for root rows. */
+  parentId?: SessionId
+  /** Stored parent title when the parent is still in the list. */
+  parentTitle?: string
+  /**
+   * Visible ancestor count in this group or flat list. The renderer draws a
+   * polyline gutter and does not add a session twist.
+   */
+  lineageDepth?: number
+  /**
+   * One `last-sibling` flag per ancestor column, root-adjacent first.
+   * The renderer draws a spine, tee, or elbow from these flags.
+   */
+  lineageGuide?: readonly boolean[]
 }
 
 /** Session order selected by the Workspace browser. */
@@ -274,7 +288,42 @@ function sectionMembers(
     else if (!archived.has(member.id) && pinned.has(member.id)) leading.push(member)
     else rest.push(member)
   }
-  return [...placeholders, ...leading, ...rest]
+  return [...placeholders, ...nestLineage(leading), ...nestLineage(rest)]
+}
+
+/**
+ * Place each ordinary fork immediately after its visible parent in this
+ * partition. Attach order may list the child first; the sidebar still groups
+ * it under the source session. Missing, self, and cyclic parents stay roots.
+ * @param members - one pinned or ordinary partition in caller order.
+ * @returns the same rows, children nested under parents.
+ */
+function nestLineage(members: readonly SessionSummary[]): SessionSummary[] {
+  const byId = new Map(members.map(session => [session.id, session]))
+  const children = new Map<SessionId, SessionSummary[]>()
+  const roots: SessionSummary[] = []
+  for (const session of members) {
+    const parentId = session.parentId
+    const parent = parentId === undefined || parentId === session.id ? undefined : byId.get(parentId)
+    if (parent === undefined) {
+      roots.push(session)
+      continue
+    }
+    const siblings = children.get(parent.id)
+    if (siblings === undefined) children.set(parent.id, [session])
+    else siblings.push(session)
+  }
+  const nested: SessionSummary[] = []
+  const seen = new Set<SessionId>()
+  const walk = (session: SessionSummary): void => {
+    if (seen.has(session.id)) return
+    seen.add(session.id)
+    nested.push(session)
+    for (const child of children.get(session.id) ?? []) walk(child)
+  }
+  for (const root of roots) walk(root)
+  for (const session of members) walk(session)
+  return nested
 }
 
 /**
@@ -287,7 +336,7 @@ function sessionTitle(session: SessionSummary): string {
   return session.blank ? '' : (session.title?.trim() ?? '')
 }
 
-/** Build one group without projecting session lineage into presentation. */
+/** Build one group. Lineage polylines are applied later from each member's `parentId`. */
 function buildGroup(
   key: string,
   workspaceId: WorkspaceId | undefined,
@@ -385,15 +434,55 @@ function runningChildCount(list: SessionListState, parentId: SessionId, statuses
   ) ?? 0
 }
 
+/**
+ * Indent depth of each visible Session from `parentId` links that stay inside
+ * this membership. Cycles, self-parents, and missing parents stay at depth 0.
+ * @param members - ordered visible Sessions in one group or the flat list.
+ * @returns depth keyed by Session id.
+ */
+function sessionLineageDepths(members: readonly SessionSummary[]): Map<SessionId, number> {
+  const byId = new Map(members.map(session => [session.id, session]))
+  const cache = new Map<SessionId, number>()
+  const visiting = new Set<SessionId>()
+  const depthOf = (session: SessionSummary): number => {
+    const cached = cache.get(session.id)
+    if (cached !== undefined) return cached
+    const parentId = session.parentId
+    if (parentId === undefined || parentId === session.id) {
+      cache.set(session.id, 0)
+      return 0
+    }
+    const parent = byId.get(parentId)
+    if (parent === undefined) {
+      cache.set(session.id, 0)
+      return 0
+    }
+    if (visiting.has(session.id)) {
+      cache.set(session.id, 0)
+      return 0
+    }
+    visiting.add(session.id)
+    const depth = 1 + depthOf(parent)
+    visiting.delete(session.id)
+    cache.set(session.id, depth)
+    return depth
+  }
+  for (const session of members) depthOf(session)
+  return cache
+}
+
 function sessionNode(
   s: SessionSummary,
   list: SessionListState,
   statuses: SessionStatuses,
   pinned: ReadonlySet<SessionId>,
   archived: ReadonlySet<SessionId>,
+  lineageDepth: number,
+  lineageGuide: readonly boolean[],
 ): SessionNode {
   const status = statuses.get(s.id)
   const pendingInteraction = visiblePendingKind(status?.pendingInteraction?.kind)
+  const parent = s.parentId === undefined ? undefined : list.byId[s.parentId]
   return {
     id: s.id,
     title: sessionTitle(s),
@@ -404,13 +493,68 @@ function sessionNode(
     pinned: !archived.has(s.id) && pinned.has(s.id),
     archived: archived.has(s.id),
     updatedAt: s.updatedAt,
+    lineageDepth,
+    ...(lineageGuide.length === 0 ? {} : { lineageGuide }),
     ...(s.cwd === undefined || s.cwd === '' ? {} : { cwd: s.cwd }),
     ...(pendingInteraction === undefined ? {} : { pendingInteraction }),
+    ...(s.parentId === undefined ? {} : { parentId: s.parentId }),
+    ...(parent === undefined ? {} : { parentTitle: sessionTitle(parent) }),
   }
 }
 
 /**
- * Derive the workspace browser groups with every session as a top-level row.
+ * Last-sibling flags for each ancestor column of a nested Session.
+ * @param members - nested visible Sessions in one group or the flat list.
+ * @param depths - nesting depth from {@link sessionLineageDepths}.
+ * @returns flags keyed by Session id; empty for root rows.
+ */
+function sessionLineageGuides(
+  members: readonly SessionSummary[],
+  depths: Map<SessionId, number>,
+): Map<SessionId, readonly boolean[]> {
+  const byId = new Map(members.map(session => [session.id, session]))
+  const children = new Map<SessionId, SessionId[]>()
+  for (const session of members) {
+    if ((depths.get(session.id) ?? 0) === 0 || session.parentId === undefined) continue
+    const siblings = children.get(session.parentId)
+    if (siblings === undefined) children.set(session.parentId, [session.id])
+    else siblings.push(session.id)
+  }
+  const lastChild = (id: SessionId, parentId: SessionId): boolean => {
+    const siblings = children.get(parentId)
+    return siblings !== undefined && siblings[siblings.length - 1] === id
+  }
+  const flagsOf = (session: SessionSummary): boolean[] => {
+    const depth = depths.get(session.id) ?? 0
+    if (depth === 0 || session.parentId === undefined) return []
+    const parent = byId.get(session.parentId)
+    if (parent === undefined) return []
+    if ((depths.get(parent.id) ?? 0) >= depth) return []
+    return [...flagsOf(parent), lastChild(session.id, parent.id)]
+  }
+  const guides = new Map<SessionId, readonly boolean[]>()
+  for (const session of members) guides.set(session.id, flagsOf(session))
+  return guides
+}
+
+function sessionNodes(
+  members: readonly SessionSummary[],
+  list: SessionListState,
+  statuses: SessionStatuses,
+  pinned: ReadonlySet<SessionId>,
+  archived: ReadonlySet<SessionId>,
+): SessionNode[] {
+  const depths = sessionLineageDepths(members)
+  const guides = sessionLineageGuides(members, depths)
+  return members.map(session => sessionNode(
+    session, list, statuses, pinned, archived,
+    depths.get(session.id) ?? 0, guides.get(session.id) ?? [],
+  ))
+}
+
+/**
+ * Derive the workspace browser groups. Ordinary forks nest under a visible
+ * parent in the same group; they stay independent rows with no session twist.
  *
  * Every group shows, except that the archived-only filter drops groups
  * without visible members; sessions populate under expanded groups with
@@ -452,8 +596,7 @@ export function deriveGroups(
       expanded,
       containsCurrent: g.key === currentGroup,
       sessions: expanded
-        ? sectionMembers(g.sessions, pinned, archived)
-          .map(session => sessionNode(session, list, statuses, pinned, archived))
+        ? sessionNodes(sectionMembers(g.sessions, pinned, archived), list, statuses, pinned, archived)
         : [],
     })
   }
@@ -535,8 +678,7 @@ export function deriveFlat(
       ? [session]
       : []
   })
-  return sectionMembers(members, pinned, archived)
-    .map(session => sessionNode(session, list, statuses, pinned, archived))
+  return sessionNodes(sectionMembers(members, pinned, archived), list, statuses, pinned, archived)
 }
 
 /**

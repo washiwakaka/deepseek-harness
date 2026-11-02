@@ -66,7 +66,52 @@ description: "按实验性插件实现拟议的协作房间：共享 Session 上
       },
 ```
 
-拷贝过来的 `collaboration/*` 事件仍然没有 `surfaceOp`，所以子 Agent 仍无法通过 `deriveMessages()` 看见它们。继承来的房间 `user/message` 与 `assistant/message` 也不在子会话自己的历史里。提及分发必须把房间帖和这些房间 Agent 轮次按被 @ 的 AI 编译成一条 `UserMessage`，对该占用者的持久子会话调用 `Agent.followup`，并把 `throughSeq` 记在 `collaboration/actor-invoked` 上。该 AI 的第一次 @ 还会用 `buildForkSeed` 调用 `agents.create` 并写入 `collaboration/branch-opened`。不要设置 `origin: 'subagent'`。编译器按占用者工作：A 的第二次 @ 只发送 A 水位之后的事件；B 的第一次 @ 发送完整的房间可见誊本，包括 A 已发布的回复，绝不包括 A 的子会话工具。答案留在分支上，直到 `publishFromChild` 把最新 assistant 文本拷到房间。Agent Teams 已经用这种方式存储非表层插件事件：`packages/experimental/agent-team/src/types.ts` 的声明合并、`TeamJournal.appendAndFlush` 的无表层追加，以及 `packages/experimental/agent-team-profile/cordis.patch.yml` 的按需 overlay 行。LiveShare 不是这个模式：viewer 的 prompt 是源 Session 上的 `user/message`。
+拷贝过来的 `collaboration/*` 事件仍然没有 `surfaceOp`，所以子 Agent 仍无法通过 `deriveMessages()` 看见它们。继承来的房间 `user/message` 与 `assistant/message` 也不在子会话自己的历史里。提及分发必须把房间帖和这些房间 Agent 轮次按被 @ 的 AI 编译成一条 `UserMessage`，对该占用者的持久子会话调用 `Agent.followup`，并把 `throughSeq` 记在 `collaboration/actor-invoked` 上。该 AI 的第一次 @ 还会用 `buildForkSeed` 调用 `agents.create` 并写入带 `ownerId`（发起 @ 的真人）的 `collaboration/branch-opened`。在 `meta.parentSession` 写入房间 id，侧边栏才能把分支挂在来源会话下；不要设置 `origin: 'subagent'`。同一房间对同一真人复用该子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话。进程重启后再 @ 走 `agents.resume`。编译器按占用者工作：A 的第二次 @ 只发送 A 水位之后的事件；B 的第一次 @ 发送完整的房间可见誊本，包括 A 已发布的回复，绝不包括 A 的子会话工具。答案留在分支上，直到 `publishFromChild` 把最新 assistant 文本拷到房间。Agent Teams 已经用这种方式存储非表层插件事件：`packages/experimental/agent-team/src/types.ts` 的声明合并、`TeamJournal.appendAndFlush` 的无表层追加，以及 `packages/experimental/agent-team-profile/cordis.patch.yml` 的按需 overlay 行。LiveShare 不是这个模式：viewer 的 prompt 是源 Session 上的 `user/message`。
+
+```575:585:packages/experimental/collaboration/src/index.ts
+    const handle = await this.ctx.agents.create({
+      sessionId: childId,
+      seed: buildForkSeed(events, boundary),
+      inheritedEventCount: SessionLogOffset(boundary + 1),
+      meta: {
+        ...session.header.cwd === undefined ? {} : { cwd: session.header.cwd },
+        isSeeded: true,
+        parentSession: session.id,
+      },
+      agentOptions: { provider: recipient.provider, model: recipient.model },
+    })
+```
+
+```608:635:packages/experimental/collaboration/src/index.ts
+  private async liveOrResumeChild(
+    room: Session,
+    childId: SessionId,
+    recipient: ResolvedAiActor,
+  ): Promise<Agent> {
+    const live = this.ctx.agents.get(childId)
+    if (live !== undefined) {
+      this.nameBranch(room, live.session, recipient)
+      await this.ctx.sessions.flush(live.session)
+      return live
+    }
+    let handle: AgentHandle
+    try {
+      handle = await this.ctx.agents.resume({
+        resumeSessionId: childId,
+        agentOptions: { provider: recipient.provider, model: recipient.model },
+      })
+    } catch (error) {
+      throw new CollaborationError(
+        `AI child "${childId}" is not live`,
+        'COLLAB_CHILD_MISSING',
+        { cause: error },
+      )
+    }
+    this.childHandles.set(childId, handle)
+    await this.presentBranch(room, handle.agent.session, recipient)
+    return handle.agent
+  }
+```
 
 -----
 

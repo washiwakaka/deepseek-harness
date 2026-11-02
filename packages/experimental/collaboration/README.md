@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-experimental-collaboration` lets several humans talk in one Session and @ a configured AI occupant to start that model. Unmentioned lines stay off every Agent. The first @ copies the room prefix into that AI's child and compiles room posts plus the room Agent's user and assistant turns; a later @ of the same AI sends only the uncompiled delta. The AI's answer stays on the branch until a human publishes it to the room. Mount it from an overlay, not from the default Web app.
+`dsh-experimental-collaboration` lets several humans talk in one Session and @ a configured AI occupant to start that model. Unmentioned lines stay off every Agent. The first @ copies the room prefix into that AI's child and compiles room posts plus the room Agent's user and assistant turns; a later @ of the same AI sends only the uncompiled delta. The AI works on that branch; the mentioning human calls `publishFromChild` when they want that conclusion on the room. The sidebar nests the branch under the room. Mount it from an overlay, not from the default Web app.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the plugin with a Config roster of humans and AI occupants. Call `ctx.collaboration.postMessage(session, { actorId, text, mentions })`. Omit `mentions` for ordinary chat. Name AI ids to start those children. Name a human id to invite that occupant; until then the room is creator-only. The first @ of a model names the branch `{model} · {room title}` and attaches it beside the room in the same Workspace.
+Mount the plugin with a Config roster of humans and AI occupants. Call `ctx.collaboration.postMessage(session, { actorId, text, mentions })`. Omit `mentions` for ordinary chat. Name AI ids to start those children. Name a human id to invite that occupant; until then the room is creator-only. The first @ of a model names the branch `{model} · {room title}`, stamps `parentSession` to the room (never `origin: 'subagent'`), and the sidebar groups that branch under the room for the mentioning human only. The mentioning human publishes from the branch when they want that reply on the room. The same room reuses that child on a later @ of the same model by the same human; another occupant @-mentioning the same model opens a private child. A different room always opens a new child. After a process restart, the next @ cold-resumes the persisted child.
 
 ### When to choose it
 
@@ -44,7 +44,7 @@ Durable session storage plus this plugin. Omit `actors` to use the Host demo ros
 
 | Field | Default | Meaning |
 |---|---|---|
-| `actors` | Alice (`core`, all providers) and Bob (`guest`, `deepseek-official`) | Human authors and optional Config AI occupants. Omit to use the Host default. Humans may set `group` and `providers` (empty providers means every connected Settings provider). `@` models come from `listMentionModels`, not A/B occupants |
+| `actors` | Alice (`core`) and Bob–James (`guest`); empty `providers` means every connected Settings provider | Human authors and optional Config AI occupants. Omit to use the Host default of ten overlay humans. Humans may set `group` and `providers`. `@` models come from `listMentionModels`, not Config AI occupants |
 | `maxMessageBytes` | `65,536` | Maximum UTF-8 bytes in one room message |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-experimental-collaboration) is the exhaustive source for every accepted field and its JSDoc.
@@ -57,7 +57,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The first human who posts or `claimRoom`s becomes the creator. Later humans cannot post, publish, or send until a current occupant `@`s them. Room lines are non-surface `collaboration/message` events. They never join `deriveMessages()` on the room Session, so posting does not start a room turn. A room-Agent Send still uses `user/message` and does not read peer chat. `admitRoomContext` logs the uncompiled room delta as a `collaboration-room-context` user message without followup. `sendWithRoom` admits then `followup`s the room Agent with the composer draft so the Client does not submit after a surface `user/message`. A mention dispatcher reads structured `mentions`, creates one child per AI occupant with `agents.create` and `buildForkSeed`, compiles a per-actor transcript of room posts and room-Agent user/assistant turns (inherited seed events stay off the child's `deriveMessages()`), and `followup`s that child. `collaboration/actor-invoked` stores the compiled-through seq so a later @ of the same AI sends only the uncompiled delta. The child's tool events stay on the child log. The room journal releases after that invoke is flushed. The answer stays on the branch. `publishFromChild` copies the latest assistant text onto the room.
+The first human who posts or `claimRoom`s becomes the creator. Later humans cannot post, publish, or send until a current occupant `@`s them. Room lines are non-surface `collaboration/message` events. They never join `deriveMessages()` on the room Session, so posting does not start a room turn. A room-Agent Send still uses `user/message` and does not read peer chat. `admitRoomContext` logs the uncompiled room delta as a `collaboration-room-context` user message without followup. `sendWithRoom` admits then `followup`s the room Agent with the composer draft so the Client does not submit after a surface `user/message`. A mention dispatcher reads structured `mentions`, creates one child per mentioning human and AI occupant with `agents.create` and `buildForkSeed` (or `agents.resume` when the projection already stores that child's id), compiles a per-actor transcript of room posts and room-Agent user/assistant turns (inherited seed events stay off the child's `deriveMessages()`), and `followup`s that child. `collaboration/actor-invoked` stores the compiled-through seq so a later @ of the same AI sends only the uncompiled delta. The child's tool events stay on the child log. The room journal releases after that invoke is flushed. The mentioning human calls `publishFromChild` to copy the latest assistant text onto the room. A later `publishFromChild` copies a newer branch reply.
 
 Source map: `src/types.ts` events, `src/projection.ts` fold, `src/compiler.ts` transcript, `src/journal.ts` queue, `src/index.ts` service.
 
@@ -129,7 +129,6 @@ These limits describe what the room cannot do yet.
 - **Config roster is overlay identity, not Host login** — Alice/Bob switch ids are the room ACL in this overlay; a later Host-authenticated identity would replace that switch.
 - **Experimental prototype with no stability promise** — the package is public, but its contracts can change while it incubates.
 - **No ambient listening, @all, or AI-to-AI mentions** — only a human `mentions` list starts a child turn.
-- **Children stay live in this process** — a restart does not yet cold-resume an AI child from storage.
 - **Default Web isolation** — release apps must not depend on this package; load it from an overlay.
 
 <a id="dev-note"></a>
