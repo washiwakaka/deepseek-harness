@@ -318,7 +318,7 @@ describe('collaboration-room views', () => {
       useInput={(select: (state: InputState) => InputState) => select({
         ...inputState({ draft: 'hello', phase: 'plain' }),
         occurrences: undefined,
-      } as InputState)}
+      } as never)}
       inputActions={{ setDraft: vi.fn() } as never}
       sessionId={SessionId('room')}
       post={vi.fn(async () => {})}
@@ -331,7 +331,7 @@ describe('collaboration-room views', () => {
         thinking: false,
         branchIds: [],
         selectedAiId: undefined,
-      })}
+      } as never)}
       useSessions={selectList()}
     /> as never)
     expect(screen.getByRole('button', { name: 'Post the draft to the collaboration room' })).toBeTruthy()
@@ -488,7 +488,7 @@ describe('collaboration-room views', () => {
             },
           },
         },
-      })}
+      } as typeof emptyList)}
     /> as never)
     expect(screen.getByRole('button', { name: "Post this branch's latest answer to the collaboration room" })).toBeTruthy()
   })

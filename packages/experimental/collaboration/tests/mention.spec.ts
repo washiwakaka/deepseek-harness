@@ -129,7 +129,7 @@ describe('collaboration mentions', () => {
       'hello',
       '@A please look',
     ])
-    await ctx.collaboration.publishFromChild(child.session, ActorId('alice'))
+    await ctx.collaboration.publishFromChild(child!.session, ActorId('alice'))
     expect(project(room.session).messages.map(message => message.text)).toEqual([
       'hello',
       '@A please look',
@@ -162,7 +162,7 @@ describe('collaboration mentions', () => {
       'more context',
       '@A again',
     ])
-    await ctx.collaboration.publishFromChild(child.session, ActorId('alice'))
+    await ctx.collaboration.publishFromChild(child!.session, ActorId('alice'))
     const published = project(room.session)
     expect(published.messages.map(message => message.text)).toEqual([
       'hello',

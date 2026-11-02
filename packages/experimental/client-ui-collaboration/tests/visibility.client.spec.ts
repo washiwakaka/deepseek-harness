@@ -62,7 +62,7 @@ describe('collaboration session visibility', () => {
           collaboration: {
             occupants: ['alice', 'bob'] as never,
             children: { aliceA: BRANCH, bobA: bobs },
-            childOwners: { [BRANCH]: 'alice', [bobs]: 'bob' },
+            childOwners: { [BRANCH]: 'alice', [bobs]: 'bob' } as never,
             messages: [],
             watermarks: {},
           },
