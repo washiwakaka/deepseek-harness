@@ -1,7 +1,7 @@
 /** Generic unary RPC contracts shared by the Host and Client Connection halves. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
+import type { PeerId, PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
 
 /** Correlation id minted by a caller and echoed by the Connection response. */
 export type RpcId = Branded<'rpc-id'>
@@ -208,7 +208,7 @@ export interface HostConnectionHandle {
   readonly rpc: HostConnectionRpc
   /** Exact Fetch routes for streaming or browser-native responses. */
   readonly fetch: HostConnectionFetch
-  /** The owner Peer every authenticated browser connection shares. */
+  /** Owner Peer for in-process index render and leftover v1 cookies when no principal factory is set. */
   readonly browserPeer: PeerScope
 
   /**
@@ -245,6 +245,16 @@ export interface HostConnectionHandle {
    * @returns a new Peer distinct from every other Peer.
    */
   createPeer(options: { readonly principal: Principal; readonly interactions?: 'answer' | 'none' }): PeerScope
+
+  /**
+   * Choose the principal minted for each v3 browser-session Peer.
+   * Identity registers `{ kind: 'local-identity', browserSessionId }`; without
+   * a factory, each session Peer stays `{ kind: 'owner' }`. Later admits remint
+   * an existing owner session Peer, leftover v1 Peer, and API `/connect` Peer.
+   * @param factory - maps the cookie Peer id to a principal.
+   * @returns disposer that forgets this factory when it is still the active one.
+   */
+  registerBrowserPrincipal(factory: (id: PeerId) => Principal): () => void
 
   /**
    * Claim a physical socket for an API Peer; browser sockets share their owner Peer.

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub sign-in",
+    "description": "Advertises GitHub as an identity method. Authorization is not implemented yet."
+  }
+}

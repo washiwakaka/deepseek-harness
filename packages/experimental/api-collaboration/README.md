@@ -25,7 +25,7 @@ The `collaboration` Remote lets a browser list Config occupants, list Settings m
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount with `@deepseek-ai/dsh-experimental-collaboration` and Typert from an overlay, not from the default Web remotes list. `listActors()` returns id, kind, and name. `listMentionModels(actorId, signal)` returns Settings-connected models that human may `@`. `postMessage(agent, { actorId, text, mentions }, signal)` appends on that Agent's Session and returns started branch ids; a human mention invites that occupant. `claimRoom(agent, actorId, signal)` records the creator on an empty room. `publish(agent, actorId, signal)` copies the branch's latest assistant text onto the room. `admitRoomContext(agent, actorId, signal)` logs the uncompiled room delta without followup. `sendWithRoom(agent, text, actorId, signal)` admits then followups the room Agent. Non-occupants receive `collaboration/forbidden`.
+Mount with `@deepseek-ai/dsh-experimental-collaboration` and Typert from an overlay, not from the default Web remotes list. `listActors()` returns id, kind, and name. Sign-in remotes live on `@deepseek-ai/dsh-experimental-api-identity`. `listMentionModels(actorId, signal)` returns Settings-connected models that human may `@`. `postMessage(agent, { actorId, text, mentions }, signal)` appends on that Agent's Session and returns started branch ids; a human mention invites that occupant. `claimRoom(agent, actorId, signal)` records the creator on an empty room. `publish(agent, actorId, signal)` copies the branch's latest assistant text onto the room. `admitRoomContext(agent, actorId, signal)` logs the uncompiled room delta without followup. `sendWithRoom(agent, text, actorId, signal)` admits then followups the room Agent. Non-occupants receive `collaboration/forbidden`. Unsigned posts receive `collaboration/unauthorized`.
 
 -----
 
@@ -46,7 +46,7 @@ The controller maps `CollaborationError` codes onto `RemoteError` codes in this 
 
 - [Collaboration Host](../collaboration/README.md) — room events and per-actor compile.
 - [Adding a Remote API](../../../docs/cookbook/adding-a-remote-api.md) — `@Remote` conventions.
-- [Overlay](../collaboration-profile/README.md) — `--patch` launch.
+- [Collaboration room bundle](../collaboration-profile/README.md) — Plugins page or `dsh plugin add`.
 - [Experimental packages](../README.md) — isolation.
 
 -----

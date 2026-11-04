@@ -14,8 +14,10 @@ import type { PeerId, PeerScope, Principal } from '@deepseek-ai/dsh-typert-proto
 export interface PeerOptions {
   /** Caller identity every call through this Peer speaks for. */
   readonly principal: Principal
-  /** Omission permits an event stream; non-owner Peers still cannot answer waterfalls. */
+  /** Omission permits an event stream; Gateway still decides which answering Peers settle waterfalls. */
   readonly interactions?: 'answer' | 'none'
+  /** Cookie-assigned id; omitted mints a new one. */
+  readonly id?: PeerId
 }
 
 /**
@@ -24,7 +26,7 @@ export interface PeerOptions {
  * listeners registered through `peer.ctx` and nobody else.
  */
 export class Peer implements PeerScope {
-  readonly id: PeerId = randomUUID() as PeerId
+  readonly id: PeerId
   readonly ctx: Context
   readonly principal: Principal
   readonly interactions: 'answer' | 'none'
@@ -36,6 +38,7 @@ export class Peer implements PeerScope {
    * @param options - the principal fixed for this Peer's lifetime.
    */
   constructor(owner: Context, options: PeerOptions) {
+    this.id = options.id ?? randomUUID() as PeerId
     this.principal = options.principal
     this.interactions = options.interactions ?? 'answer'
     this.scope = createScope(owner, this)

@@ -67,13 +67,20 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:*"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:~"
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-session": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-session": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@deepseek-ai/dsh-api-remote-access": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
     "@deepseek-ai/dsh-cmdline": "workspace:*",
     "@deepseek-ai/dsh-client-connection": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-host-webserver": "workspace:*",
     "@deepseek-ai/dsh-remote-mock": "workspace:*",
     "@deepseek-ai/dsh-typert-registry": "workspace:*",

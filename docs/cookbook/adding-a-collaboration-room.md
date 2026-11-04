@@ -8,7 +8,7 @@ English | [中文](adding-a-collaboration-room.zh.md)
 
 ## Summary
 
-Use this tutorial to add an experimental collaboration room on existing Session, Agent, Remote, and Conversation APIs without changing `agent-loop`. Readers start from a contributor checkout that already runs Web. The outcome is overlay plugins: humans and named AI occupants share one room Session; an unmentioned message stays off every Agent; an @ forks that AI's child once, compiles a per-actor delta, and leaves the answer on the branch until publish. Host, Remote, overlay, and Client UI packages are in the checkout. This page is the implementation path for the [collaboration-room Agent Note](../../.agents/notes/proposed/feature/2026-10-12-collaboration-room-fork-publish.md) and the [branch-publish note](../../.agents/notes/proposed/feature/2026-10-29-collaboration-branch-publish.md).
+Use this tutorial to add an experimental collaboration room on existing Session, Agent, Remote, and Conversation APIs without changing `agent-loop`. Readers start from a contributor checkout that already runs Web. The outcome is opt-in plugins: humans and named AI occupants share one room Session; an unmentioned message stays off every Agent; an @ forks that AI's child once, compiles a per-actor delta, and leaves the answer on the branch until publish. Host, Remote, bundle, and Client UI packages are in the checkout. This page is the implementation path for the [collaboration-room Agent Note](../../.agents/notes/proposed/feature/2026-10-12-collaboration-room-fork-publish.md) and the [branch-publish note](../../.agents/notes/proposed/feature/2026-10-29-collaboration-branch-publish.md).
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ Use this tutorial to add an experimental collaboration room on existing Session,
 - [4. Package checks](#package-checks)
 - [5. Remote](#remote)
 - [6. Client UI](#client-ui)
-- [7. Overlay profile](#overlay)
+- [7. Installable bundle](#overlay)
 - [8. Manual verification](#manual)
 - [Further Exploration](#further-exploration)
 - [Dev Note](#dev-note)
@@ -30,7 +30,7 @@ Use this tutorial to add an experimental collaboration room on existing Session,
 <a id="prerequisites"></a>
 ## Prerequisites
 
-Read the [package checklist](adding-a-package.md), [experimental package rules](../../packages/experimental/AGENTS.md), [experimental status](../../packages/experimental/README.md#status), and [default-product isolation](../../.agents/notes/implemented/process/2026-09-12-default-product-experimental-isolation.md). Do not add these packages to `dsh-web-app` or the default Web HTML. Phase-one actors come from Host Config, not from a Client-supplied display name.
+Read the [package checklist](adding-a-package.md), [experimental package rules](../../packages/experimental/AGENTS.md), [experimental status](../../packages/experimental/README.md#status), and [default-product isolation](../../.agents/notes/implemented/process/2026-09-12-default-product-experimental-isolation.md). Do not add these packages to `dsh-web-app` or the default Web HTML. Identity registers humans with a username and password; Config `actors` may be empty when that plugin is loaded.
 
 -----
 
@@ -66,7 +66,7 @@ Peer chat must not use `user/message`. The loop admits inbox messages onto the s
       },
 ```
 
-Copied `collaboration/*` events still lack `surfaceOp`, so the child Agent still cannot see them through `deriveMessages()`. Inherited room `user/message` and `assistant/message` events are also outside the child's own history. A mention dispatcher must compile room posts and those room-Agent turns into one `UserMessage` per mentioned AI, call `Agent.followup` on that occupant's persistent child, and record `throughSeq` on `collaboration/actor-invoked`. First @ of that AI also `agents.create`s with `buildForkSeed` and writes `collaboration/branch-opened` with the mentioning human as `ownerId`. Stamp `meta.parentSession` to the room so the sidebar can nest the branch; do not set `origin: 'subagent'`. The same room reuses that child for the same human; another occupant's @ of the same model opens a private child only that human can see. A later @ after process restart `agents.resume`s it. The compiler is per-actor: A's second @ sends only events after A's watermark; B's first @ sends the full room-visible transcript, including A's published reply, never A's child tools. The answer stays on the branch until `publishFromChild` copies latest assistant text onto the room. Agent Teams already stores non-surface plugin events this way: declaration merge in `packages/experimental/agent-team/src/types.ts`, append-without-surface in `TeamJournal.appendAndFlush`, and opt-in overlay rows in `packages/experimental/agent-team-profile/cordis.patch.yml`. LiveShare is not this pattern: a viewer prompt is a source-Session `user/message`.
+Copied `collaboration/*` events still lack `surfaceOp`, so the child Agent still cannot see them through `deriveMessages()`. Inherited room `user/message` and `assistant/message` events are also outside the child's own history. A mention dispatcher must compile room posts and those room-Agent turns into one `UserMessage` per mentioned AI, call `Agent.followup` on that occupant's persistent child, and record `throughSeq` on `collaboration/actor-invoked`. First @ of that AI also `agents.create`s with `buildForkSeed` and writes `collaboration/branch-opened` with the mentioning human as `ownerId`. Stamp `meta.parentSession` to the room so the sidebar can nest the branch; do not set `origin: 'subagent'`. The same room reuses that child for the same human; another occupant's @ of the same model opens a private child only that human can see. A later @ after process restart `agents.resume`s it. The compiler is per-actor: A's second @ sends only events after A's watermark; B's first @ sends the full room-visible transcript, including A's published reply, never A's child tools. The answer stays on the branch until `publishFromChild` copies latest assistant text onto the room. Agent Teams already stores non-surface plugin events this way: declaration merge in `packages/team/agent-team/src/types.ts`, append-without-surface in `TeamJournal.appendAndFlush`, and opt-in overlay rows in `packages/team/agent-team-profile/cordis.patch.yml`. LiveShare is not this pattern: a viewer prompt is a source-Session `user/message`.
 
 ```575:585:packages/experimental/collaboration/src/index.ts
     const handle = await this.ctx.agents.create({
@@ -173,27 +173,33 @@ Add `packages/experimental/api-collaboration` as a `TypertRemoteService` with `n
 <a id="client-ui"></a>
 ## 6. Client UI
 
-Add `packages/experimental/client-ui-collaboration`. Register conversation event types for `collaboration/*` and contribute Chat nodes for human lines, AI replies, and the Deep diving row that starts on `collaboration/actor-invoked`. Register an `@` source named `models` at `order: -10` so Settings models list above sessions and files. Put the test-human select on `conversation.header.leading`. Inject compact `conversation.input.right` buttons that post through `collaboration.postMessage` or send through `collaboration.sendWithRoom`, and a composer-dock thinking indicator while those calls are in flight. After a mention post, `openSession` the returned branch ids. On a branch, inject Push to room, which calls `collaboration.publish`. Keep copy in locale dictionaries and `t()`. Do not edit `ui-conversation` core paths; inject through existing slots. See the [Conversation subsystem](../subsystems/conversation.md) and [Agent Teams client UI](../../packages/experimental/client-ui-agent-team/README.md).
+Add `packages/experimental/client-ui-collaboration`. Register conversation event types for `collaboration/*` and contribute Chat nodes for human lines, AI replies, and the Deep diving row that starts on `collaboration/actor-invoked`. Register an `@` source named `models` at `order: -10` so Settings models list above sessions and files. Put the register/sign-in form on `conversation.header.leading`. Inject compact `conversation.input.right` buttons that post through `collaboration.postMessage` or send through `collaboration.sendWithRoom`, and a composer-dock thinking indicator while those calls are in flight. After a mention post, `openSession` the returned branch ids. On a branch, inject Push to room, which calls `collaboration.publish`. Keep copy in locale dictionaries and `t()`. Do not edit `ui-conversation` core paths; inject through existing slots. See the [Conversation subsystem](../subsystems/conversation.md) and [Agent Teams client UI](../../packages/client/ui-agent-team/README.md).
 
 -----
 
 <a id="overlay"></a>
-## 7. Overlay profile
+## 7. Installable bundle
 
-`packages/experimental/collaboration-profile/cordis.patch.yml` inserts the Host, Remote, and Client UI plugins after the Web base. Occupants come from the Host plugin default roster or an optional Config override; Clients call `listActors`. Enter still uses the ordinary Session prompt. After the overlay exists, the intended launch is:
+`packages/experimental/collaboration-profile` is a `dsh.bundle.patch` layer. Its `cordis.patch.yml` inserts identity, the GitHub method plugin, then the room Host, Remote, and Client UI plugins after the Web base. Occupants register through the sidebar account chip, then join a business line and choose `@` models for that line; Clients call `listActors`. Enter still uses the ordinary Session prompt. After the bundle exists, the intended install is:
+
+```sh
+dsh plugin --profile web add @deepseek-ai/dsh-experimental-collaboration-profile
+```
+
+On a contributor checkout, source-launch still accepts:
 
 ```sh
 pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.yml
 ```
 
-The overlay loads Host, Remote, and the Client UI header badge, room-message rows, the `@` Settings-model source, and the Post to room composer button. Enter still uses the ordinary Session prompt. Isolation checks must still reject default Web loading these rows. Do not select the LiveShare bundle as a substitute.
+The bundle loads Host, Remote, and the Client UI header badge, room-message rows, the `@` Settings-model source, and the Post to room composer button. Enter still uses the ordinary Session prompt. Isolation checks must still reject default Web loading these rows until the bundle is enabled. Do not select the LiveShare bundle as a substitute.
 
 -----
 
 <a id="manual"></a>
 ## 8. Manual verification
 
-With two browsers on the overlay Web:
+With two browsers on the bundle-enabled Web:
 
 1. Human Alice posts an unmentioned room message; switching to Bob hides that Session until Alice `@`s Bob; the room log has no new `turn/start` and no child `followup`.
 2. Alice @ A; A's child is forked once; the Client opens that branch; the first child task contains compiled room lines through that mention; the room has no new AI line until Push to room.
@@ -201,7 +207,7 @@ With two browsers on the overlay Web:
 4. Alice @ B; B's first task contains the full room-visible transcript including A's published reply, not A's tool calls.
 5. Open the room `session.v4.jsonl` and confirm it holds `collaboration/*` events, including `actor-invoked` watermarks, not child tool calls.
 
-Split implementation across PRs in that order: Host messages, Host mentions and compiler, persistence acknowledgement, Remote, UI and overlay.
+Split implementation across PRs in that order: Host messages, Host mentions and compiler, persistence acknowledgement, Remote, UI and bundle.
 
 -----
 
@@ -213,7 +219,7 @@ Split implementation across PRs in that order: Host messages, Host mentions and 
 - [Interactive side sessions](../../.agents/notes/proposed/feature/2026-07-08-interactive-side-sessions.md) — one-user advisor fork with `context/message` merge-back.
 - [Adding a package](adding-a-package.md) — file checklist for a new workspace package.
 - [Reviewing persistence-type changes](reviewing-persistence-type-changes.md) — how to record SessionEventMap keys.
-- [Agent Teams package](../../packages/experimental/agent-team/README.md) — the non-surface event and overlay pattern this work copies.
+- [Agent Teams package](../../packages/team/agent-team/README.md) — the non-surface event and overlay pattern this work copies.
 - [LiveShare package](../../packages/experimental/liveshare/README.md) — remote sharing of one Session; not the room model.
 
 -----

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  humanMayUseModel,
   humanMayUseProvider,
   listCatalogMentions,
   mentionRouteId,
@@ -14,6 +15,7 @@ const alice: ResolvedHumanActor = {
   name: 'Alice',
   group: 'core',
   providers: [],
+  models: [],
 }
 
 const bob: ResolvedHumanActor = {
@@ -22,6 +24,7 @@ const bob: ResolvedHumanActor = {
   name: 'Bob',
   group: 'guest',
   providers: ['deepseek-official'],
+  models: [],
 }
 
 describe('collaboration mention catalog', () => {
@@ -39,6 +42,8 @@ describe('collaboration mention catalog', () => {
     expect(humanMayUseProvider(alice, 'qwen-token-plan')).toBe(true)
     expect(humanMayUseProvider(bob, 'qwen-token-plan')).toBe(false)
     expect(humanMayUseProvider(bob, 'deepseek-official')).toBe(true)
+    expect(humanMayUseModel(alice, 'qwen-token-plan/qwen-plus')).toBe(true)
+    expect(humanMayUseModel({ ...bob, models: ['deepseek-official/deepseek-chat'] }, 'deepseek-official/deepseek-reasoner')).toBe(false)
   })
 
   it('lists advertised models and skips a failing provider catalog', async () => {
@@ -65,6 +70,18 @@ describe('collaboration mention catalog', () => {
         provider: 'qwen-token-plan',
         model: 'qwen-plus',
       },
+      {
+        id: ActorId('deepseek-official/deepseek-chat'),
+        kind: 'ai',
+        name: 'DeepSeek Chat',
+        provider: 'deepseek-official',
+        model: 'deepseek-chat',
+      },
+    ])
+    await expect(listCatalogMentions(llm, {
+      ...alice,
+      models: ['deepseek-official/deepseek-chat'],
+    })).resolves.toEqual([
       {
         id: ActorId('deepseek-official/deepseek-chat'),
         kind: 'ai',

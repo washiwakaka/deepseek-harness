@@ -9,17 +9,17 @@
   en: 08019b3334f870f1
   zh: 513e94be2da593b1
 /cookbook-adding-a-collaboration-room/summary:
-  en: 2817ca38f95c6bd7
-  zh: b83daf3158f46191
+  en: d1dba1d298ec0780
+  zh: fd2571152369c9b0
 /cookbook-adding-a-collaboration-room/table-of-contents:
-  en: b4f8559c24d34945
-  zh: 8fb4543040a228c7
+  en: bcfb225471d30dbc
+  zh: 4e5155ea3077413f
 /cookbook-adding-a-collaboration-room/prerequisites:
-  en: 4dd0721404b84f4a
-  zh: af484313c013e3e6
+  en: b27d7bc6805c9d9f
+  zh: 0d92877298033db8
 /cookbook-adding-a-collaboration-room/owning-mechanisms:
-  en: 39c1b54ff89fba33
-  zh: 19d582849524095e
+  en: bf443359258376db
+  zh: 8788ff323daa9d08
 /cookbook-adding-a-collaboration-room/1-scaffold-the-host-package:
   en: 50011eeaaa82e8b6
   zh: 1736598bc7e918a3
@@ -36,17 +36,17 @@
   en: e63ba79ff5c6b3b4
   zh: 45338bf371a506d7
 /cookbook-adding-a-collaboration-room/6-client-ui:
-  en: 69379f1992e25bf3
-  zh: 92c6b2f8984ad43c
-/cookbook-adding-a-collaboration-room/7-overlay-profile:
-  en: 8bd0e60ef17af2ee
-  zh: 5e8dfdd5360897dd
+  en: 3b6fa8e081af48f6
+  zh: 9a1a0bb3095feec2
+/cookbook-adding-a-collaboration-room/7-installable-bundle:
+  en: 99bb902ec2b5f672
+  zh: a86fd65b96d9cb0f
 /cookbook-adding-a-collaboration-room/8-manual-verification:
-  en: b64e865934aa5992
-  zh: a620f1bae3b8b829
+  en: 2a4a839c3ae1cd9c
+  zh: 5933e4b253b44ce6
 /cookbook-adding-a-collaboration-room/further-exploration:
-  en: 1515c38cd15156bd
-  zh: 3068c76067d0c59e
+  en: 195ca1086f0288b7
+  zh: cb203c65b27fde69
 /cookbook-adding-a-collaboration-room/dev-note:
   en: 9f131849b0b779a1
   zh: 84ad5e42f91f3b87

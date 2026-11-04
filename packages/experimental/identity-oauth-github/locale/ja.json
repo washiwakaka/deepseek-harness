@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub ログイン",
+    "description": "GitHub を identity のログイン方式として登録します。認可は未実装です。"
+  }
+}

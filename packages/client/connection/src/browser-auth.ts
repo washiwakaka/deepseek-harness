@@ -1,6 +1,6 @@
 /** Browser-session authentication for the Host Connection carrier. */
 
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
 import { CONNECT_PATH, type ConnectionInteractions } from './connect-protocol.ts'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
@@ -17,6 +17,7 @@ const SECRET_BYTES = 32
 const TOKEN_QUERY = 'token'
 const COOKIE_PREFIX = 'dsh-auth-'
 const COOKIE_PAYLOAD_VERSION = 1
+const BROWSER_SESSION_COOKIE_VERSION = 3
 const STORED_SECRET_VERSION = 1
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/
 const PROCESS_LAUNCH_TOKENS = new WeakMap<object, string>()
@@ -38,7 +39,12 @@ interface ApiCookiePayload extends Omit<BrowserCookiePayload, 'version'> {
   readonly id: PeerId
 }
 
-type CookiePayload = BrowserCookiePayload | ApiCookiePayload
+interface BrowserSessionCookiePayload extends Omit<BrowserCookiePayload, 'version'> {
+  readonly version: typeof BROWSER_SESSION_COOKIE_VERSION
+  readonly id: PeerId
+}
+
+type CookiePayload = BrowserCookiePayload | ApiCookiePayload | BrowserSessionCookiePayload
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -151,7 +157,8 @@ function encodeCookie(payload: CookiePayload, secret: Buffer): string {
 function decodeCookie(value: string, secret: Buffer): CookiePayload | undefined {
   const parts = value.split('.')
   const [version, body, encodedSignature] = parts
-  if (parts.length !== 3 || (version !== 'v1' && version !== 'v2') || body === undefined || encodedSignature === undefined) {
+  if (parts.length !== 3 || (version !== 'v1' && version !== 'v2' && version !== 'v3')
+    || body === undefined || encodedSignature === undefined) {
     return undefined
   }
   const actualSignature = decodeBase64Url(encodedSignature)
@@ -168,7 +175,9 @@ function decodeCookie(value: string, secret: Buffer): CookiePayload | undefined 
     return undefined
   }
   if (!isRecord(decoded)
-    || (decoded.version !== COOKIE_PAYLOAD_VERSION && decoded.version !== 2)
+    || (decoded.version !== COOKIE_PAYLOAD_VERSION
+      && decoded.version !== 2
+      && decoded.version !== BROWSER_SESSION_COOKIE_VERSION)
     || version !== `v${decoded.version}`
     || typeof decoded.authority !== 'string'
     || typeof decoded.issuedAt !== 'number' || !Number.isSafeInteger(decoded.issuedAt)
@@ -176,7 +185,8 @@ function decodeCookie(value: string, secret: Buffer): CookiePayload | undefined 
   const payload = { authority: decoded.authority, issuedAt: decoded.issuedAt, expiresAt: decoded.expiresAt }
   if (decoded.version === COOKIE_PAYLOAD_VERSION) return { version: COOKIE_PAYLOAD_VERSION, ...payload }
   if (typeof decoded.id !== 'string' || decoded.id.length === 0) return undefined
-  return { version: 2, ...payload, id: decoded.id as PeerId }
+  if (decoded.version === 2) return { version: 2, ...payload, id: decoded.id as PeerId }
+  return { version: BROWSER_SESSION_COOKIE_VERSION, ...payload, id: decoded.id as PeerId }
 }
 
 async function initializeSecret(credentials: CredentialProvider): Promise<Buffer> {
@@ -271,8 +281,9 @@ export class BrowserAuth {
         const issuedAt = Date.now()
         const expiresAt = issuedAt + this.maxAgeMilliseconds
         const value = encodeCookie({
-          version: COOKIE_PAYLOAD_VERSION,
+          version: BROWSER_SESSION_COOKIE_VERSION,
           authority,
+          id: randomUUID() as PeerId,
           issuedAt,
           expiresAt,
         }, this.secret)
@@ -354,7 +365,19 @@ export class BrowserAuth {
    * @returns true only for an unexpired cookie signed by this activation's loaded secret.
    */
   isAuthenticated(request: ConnectionTrustRequest, secure = false): boolean {
-    return this.authenticate(request, secure)?.version === COOKIE_PAYLOAD_VERSION
+    const payload = this.authenticate(request, secure)
+    return payload !== undefined && payload.version !== 2
+  }
+
+  /**
+   * Verify a per-browser session cookie without creating its Peer.
+   * @param request - request headers carrying Host and Cookie.
+   * @param secure - whether the receiving listener uses TLS.
+   * @returns the signed browser-session id, or undefined for invalid, expired, v1, or API cookies.
+   */
+  authenticateBrowser(request: ConnectionTrustRequest, secure = false): PeerId | undefined {
+    const payload = this.authenticate(request, secure)
+    return payload?.version === BROWSER_SESSION_COOKIE_VERSION ? payload.id : undefined
   }
 
   /**

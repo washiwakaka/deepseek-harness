@@ -41,6 +41,9 @@
       "path": "../../credentials/credentials"
     },
     {
+      "path": "../../api/remote-access/tsconfig.host.json"
+    },
+    {
       "path": "../../host/webserver"
     },
     {

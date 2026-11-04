@@ -8,7 +8,7 @@ description: "按实验性插件实现拟议的协作房间：共享 Session 上
 
 ## 摘要
 
-用本教程在现有 Session（会话）、Agent（智能体）、Remote 与 Conversation API 上新增实验性协作房间，且不改 `agent-loop`。读者从一个已经能跑 Web 的贡献者工作区开始。结果是 overlay 插件：真人和具名 AI 占用者共用一个房间 Session；未被提及的消息不进入任何 Agent；@ 对该 AI 的子会话 fork 一次，按占用者编译增量，答案留在分支上直到发布。Host、Remote、overlay 与 Client UI 包已在工作区。本页是[协作房间 Agent Note](../../.agents/notes/proposed/feature/2026-10-12-collaboration-room-fork-publish.zh.md) 与[分支发布 Agent Note](../../.agents/notes/proposed/feature/2026-10-29-collaboration-branch-publish.zh.md) 的实现路径。
+用本教程在现有 Session（会话）、Agent（智能体）、Remote 与 Conversation API 上新增实验性协作房间，且不改 `agent-loop`。读者从一个已经能跑 Web 的贡献者工作区开始。结果是按需开启的插件：真人和具名 AI 占用者共用一个房间 Session；未被提及的消息不进入任何 Agent；@ 对该 AI 的子会话 fork 一次，按占用者编译增量，答案留在分支上直到发布。Host、Remote、组合包与 Client UI 包已在工作区。本页是[协作房间 Agent Note](../../.agents/notes/proposed/feature/2026-10-12-collaboration-room-fork-publish.zh.md) 与[分支发布 Agent Note](../../.agents/notes/proposed/feature/2026-10-29-collaboration-branch-publish.zh.md) 的实现路径。
 
 ## 目录
 
@@ -20,7 +20,7 @@ description: "按实验性插件实现拟议的协作房间：共享 Session 上
 - [4. 包级检查](#package-checks)
 - [5. Remote](#remote)
 - [6. Client UI](#client-ui)
-- [7. Overlay profile](#overlay)
+- [7. 可安装组合包](#overlay)
 - [8. 手工验收](#manual)
 - [延伸阅读](#further-exploration)
 - [开发备注](#dev-note)
@@ -30,7 +30,7 @@ description: "按实验性插件实现拟议的协作房间：共享 Session 上
 <a id="prerequisites"></a>
 ## 前置条件
 
-阅读[包检查清单](adding-a-package.zh.md)、[实验性包规则](../../packages/experimental/AGENTS.md)、[实验性状态](../../packages/experimental/README.zh.md#status)和[默认产品隔离](../../.agents/notes/implemented/process/2026-09-12-default-product-experimental-isolation.zh.md)。不要把这些包加入 `dsh-web-app` 或默认 Web HTML。第一期 actor 来自 Host Config，而不是 Client 提供的显示名。
+阅读[包检查清单](adding-a-package.zh.md)、[实验性包规则](../../packages/experimental/AGENTS.md)、[实验性状态](../../packages/experimental/README.zh.md#status)和[默认产品隔离](../../.agents/notes/implemented/process/2026-09-12-default-product-experimental-isolation.zh.md)。不要把这些包加入 `dsh-web-app` 或默认 Web HTML。identity 用用户名和密码注册真人；加载该插件时 Config `actors` 可为空。
 
 -----
 
@@ -66,7 +66,7 @@ description: "按实验性插件实现拟议的协作房间：共享 Session 上
       },
 ```
 
-拷贝过来的 `collaboration/*` 事件仍然没有 `surfaceOp`，所以子 Agent 仍无法通过 `deriveMessages()` 看见它们。继承来的房间 `user/message` 与 `assistant/message` 也不在子会话自己的历史里。提及分发必须把房间帖和这些房间 Agent 轮次按被 @ 的 AI 编译成一条 `UserMessage`，对该占用者的持久子会话调用 `Agent.followup`，并把 `throughSeq` 记在 `collaboration/actor-invoked` 上。该 AI 的第一次 @ 还会用 `buildForkSeed` 调用 `agents.create` 并写入带 `ownerId`（发起 @ 的真人）的 `collaboration/branch-opened`。在 `meta.parentSession` 写入房间 id，侧边栏才能把分支挂在来源会话下；不要设置 `origin: 'subagent'`。同一房间对同一真人复用该子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话。进程重启后再 @ 走 `agents.resume`。编译器按占用者工作：A 的第二次 @ 只发送 A 水位之后的事件；B 的第一次 @ 发送完整的房间可见誊本，包括 A 已发布的回复，绝不包括 A 的子会话工具。答案留在分支上，直到 `publishFromChild` 把最新 assistant 文本拷到房间。Agent Teams 已经用这种方式存储非表层插件事件：`packages/experimental/agent-team/src/types.ts` 的声明合并、`TeamJournal.appendAndFlush` 的无表层追加，以及 `packages/experimental/agent-team-profile/cordis.patch.yml` 的按需 overlay 行。LiveShare 不是这个模式：viewer 的 prompt 是源 Session 上的 `user/message`。
+拷贝过来的 `collaboration/*` 事件仍然没有 `surfaceOp`，所以子 Agent 仍无法通过 `deriveMessages()` 看见它们。继承来的房间 `user/message` 与 `assistant/message` 也不在子会话自己的历史里。提及分发必须把房间帖和这些房间 Agent 轮次按被 @ 的 AI 编译成一条 `UserMessage`，对该占用者的持久子会话调用 `Agent.followup`，并把 `throughSeq` 记在 `collaboration/actor-invoked` 上。该 AI 的第一次 @ 还会用 `buildForkSeed` 调用 `agents.create` 并写入带 `ownerId`（发起 @ 的真人）的 `collaboration/branch-opened`。在 `meta.parentSession` 写入房间 id，侧边栏才能把分支挂在来源会话下；不要设置 `origin: 'subagent'`。同一房间对同一真人复用该子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话。进程重启后再 @ 走 `agents.resume`。编译器按占用者工作：A 的第二次 @ 只发送 A 水位之后的事件；B 的第一次 @ 发送完整的房间可见誊本，包括 A 已发布的回复，绝不包括 A 的子会话工具。答案留在分支上，直到 `publishFromChild` 把最新 assistant 文本拷到房间。Agent Teams 已经用这种方式存储非表层插件事件：`packages/team/agent-team/src/types.ts` 的声明合并、`TeamJournal.appendAndFlush` 的无表层追加，以及 `packages/team/agent-team-profile/cordis.patch.yml` 的按需 overlay 行。LiveShare 不是这个模式：viewer 的 prompt 是源 Session 上的 `user/message`。
 
 ```575:585:packages/experimental/collaboration/src/index.ts
     const handle = await this.ctx.agents.create({
@@ -173,27 +173,33 @@ pnpm exec tsc -b packages/experimental/collaboration --pretty false
 <a id="client-ui"></a>
 ## 6. Client UI
 
-新增 `packages/experimental/client-ui-collaboration`。为 `collaboration/*` 注册会话事件类型，并贡献真人行、AI 回复，以及从 `collaboration/actor-invoked` 开始的「深度求索中」行。注册名为 `models`、`order: -10` 的 `@` source，让设置模型排在会话和文件前面。把测试真人选择器放在 `conversation.header.leading` 上。在 `conversation.input.right` 注入小按钮，分别通过 `collaboration.postMessage` 发帖或通过 `collaboration.sendWithRoom` 发送，并在这些调用未返回时在 Composer dock 显示思考指示。带提及的发帖之后，`openSession` 返回的分支 id。在分支上注入「推到主会话」，调用 `collaboration.publish`。文案走 locale 词典和 `t()`。不要改 `ui-conversation` 核心路径；通过现有 slot 注入。见 [Conversation 子系统](../subsystems/conversation.zh.md)和 [Agent Teams Client UI](../../packages/experimental/client-ui-agent-team/README.zh.md)。
+新增 `packages/experimental/client-ui-collaboration`。为 `collaboration/*` 注册会话事件类型，并贡献真人行、AI 回复，以及从 `collaboration/actor-invoked` 开始的「深度求索中」行。注册名为 `models`、`order: -10` 的 `@` source，让设置模型排在会话和文件前面。把注册/登录表单放在 `conversation.header.leading` 上。在 `conversation.input.right` 注入小按钮，分别通过 `collaboration.postMessage` 发帖或通过 `collaboration.sendWithRoom` 发送，并在这些调用未返回时在 Composer dock 显示思考指示。带提及的发帖之后，`openSession` 返回的分支 id。在分支上注入「推到主会话」，调用 `collaboration.publish`。文案走 locale 词典和 `t()`。不要改 `ui-conversation` 核心路径；通过现有 slot 注入。见 [Conversation 子系统](../subsystems/conversation.zh.md)和 [Agent Teams Client UI](../../packages/client/ui-agent-team/README.zh.md)。
 
 -----
 
 <a id="overlay"></a>
-## 7. Overlay profile
+## 7. 可安装组合包
 
-`packages/experimental/collaboration-profile/cordis.patch.yml` 在 Web base 之后插入 Host、Remote 与 Client UI 插件。占用者来自 Host 插件默认名单或可选 Config 覆盖；Client 调 `listActors`。回车仍走普通 Session prompt。overlay 存在之后，预期启动命令是：
+`packages/experimental/collaboration-profile` 是一层 `dsh.bundle.patch`。其 `cordis.patch.yml` 在 Web base 之后先插入 identity 和 GitHub 方法插件，再插入房间 Host、Remote 与 Client UI 插件。占用者通过侧栏账号入口注册，然后加入一条业务线并为该线选择 `@` 模型；Client 调 `listActors`。回车仍走普通 Session prompt。组合包存在之后，预期安装命令是：
+
+```sh
+dsh plugin --profile web add @deepseek-ai/dsh-experimental-collaboration-profile
+```
+
+在贡献者工作区，源码启动仍可使用：
 
 ```sh
 pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.yml
 ```
 
-该 overlay 加载 Host、Remote，以及 Client UI 的标题栏标记、房间消息行、设置模型 `@` source 和「发到房间」按钮。回车仍走普通 Session prompt。隔离检查仍须拒绝默认 Web 加载这些行。不要用选中 LiveShare bundle 来代替。
+该组合包加载 Host、Remote，以及 Client UI 的标题栏标记、房间消息行、设置模型 `@` source 和「发到房间」按钮。回车仍走普通 Session prompt。在组合包启用之前，隔离检查仍须拒绝默认 Web 加载这些行。不要用选中 LiveShare bundle 来代替。
 
 -----
 
 <a id="manual"></a>
 ## 8. 手工验收
 
-在 overlay Web 上用两个浏览器：
+在已启用组合包的 Web 上用两个浏览器：
 
 1. 真人 Alice 发一条未被提及的房间消息；切到 Bob 后该 Session 从侧栏消失，直到 Alice `@` Bob；房间日志没有新的 `turn/start`，也没有子会话 `followup`。
 2. Alice @ A；A 的子会话只 fork 一次；Client 打开该分支；第一条子任务含截至该提及的编译房间行；房间在「推到主会话」之前没有新的 AI 行。
@@ -201,7 +207,7 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 4. Alice @ B；B 的第一条任务含完整房间可见誊本（包括 A 已发布的回复），不含 A 的工具调用。
 5. 打开房间 `session.v4.jsonl`，确认其中是 `collaboration/*` 事件（含 `actor-invoked` 水位），而不是子会话的工具调用。
 
-按该顺序拆 PR：Host 消息、Host 提及与编译器、持久化承认、Remote、UI 与 overlay。
+按该顺序拆 PR：Host 消息、Host 提及与编译器、持久化承认、Remote、UI 与组合包。
 
 -----
 
@@ -213,7 +219,7 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 - [交互式侧会话](../../.agents/notes/proposed/feature/2026-07-08-interactive-side-sessions.zh.md) — 单用户顾问 fork，用 `context/message` 合并回写。
 - [新增包](adding-a-package.zh.md) — 新 workspace 包的文件检查清单。
 - [评审持久化类型变更](reviewing-persistence-type-changes.zh.md) — 如何记录 SessionEventMap 键。
-- [Agent Teams 包](../../packages/experimental/agent-team/README.zh.md) — 本工作所复制的非表层事件与 overlay 模式。
+- [Agent Teams 包](../../packages/team/agent-team/README.zh.md) — 本工作所复制的非表层事件与 overlay 模式。
 - [LiveShare 包](../../packages/experimental/liveshare/README.zh.md) — 远程分享一个 Session；不是房间模型。
 
 -----

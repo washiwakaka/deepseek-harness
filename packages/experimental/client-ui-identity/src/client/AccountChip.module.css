@@ -1,0 +1,124 @@
+.chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: calc(100% - 2 * (var(--dsh-sidebar-paint-inset) + 1px));
+  height: 38px;
+  margin: 0 calc(var(--dsh-sidebar-paint-inset) + 1px) 8px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 0.5px solid transparent;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .chip:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.narrow {
+  align-self: flex-start;
+  width: 36px;
+  height: 36px;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.methods {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.error {
+  color: var(--dsw-alias-label-danger);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.signed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.who {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heading {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

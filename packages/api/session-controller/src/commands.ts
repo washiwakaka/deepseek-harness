@@ -138,6 +138,10 @@ export class SessionCommandController {
         )
       }
     }
+    await this.ctx.serial('api-session/conversation-created', {
+      agent: created.agent,
+      ...(this.ctx.invocation === undefined ? {} : { peerId: this.ctx.invocation.peer.id }),
+    })
     return { sessionId, ...(created.agentPreset === undefined ? {} : { agentPreset: created.agentPreset }) }
   }
 
@@ -537,6 +541,21 @@ function resolvePromptFileReceipts(
     return attachment
   })
   return { content: resolved, receiptIds: [...receiptIds] }
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * `session/create` finished announcing the Agent. Occupancy listeners stamp
+     * the creating Peer when `peerId` is present.
+     * @mode serial
+     * @param created - the new Agent and the creating Remote Peer id, when any.
+     */
+    'api-session/conversation-created'(created: {
+      readonly agent: Agent
+      readonly peerId?: string
+    }): void
+  }
 }
 
 function hasPromptRequest(agent: Agent, requestId: SessionRequestId): boolean {

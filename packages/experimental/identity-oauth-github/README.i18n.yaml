@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/identity-oauth-github/README.md
+/:
+  en: 3956a200a3fc928c
+  zh: 86b51084854e5faf
+/deepseek-ai-dsh-experimental-identity-oauth-github:
+  en: 5497924c6551ff3a
+  zh: 8314a96364cdd03f
+/deepseek-ai-dsh-experimental-identity-oauth-github/summary:
+  en: 93fa14fa7ac825da
+  zh: 44fc7d38d2175f74
+/deepseek-ai-dsh-experimental-identity-oauth-github/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 364c80ee00a374ff
+/deepseek-ai-dsh-experimental-identity-oauth-github/use-this-package:
+  en: ffbea094f4b3ec49
+  zh: d376767c2d03e75d
+/deepseek-ai-dsh-experimental-identity-oauth-github/understand-the-implementation:
+  en: f6942861df72b3fc
+  zh: f851722f2eee6c81
+/deepseek-ai-dsh-experimental-identity-oauth-github/further-exploration:
+  en: 98bb5a72fcf9d298
+  zh: d03d8dfd625e05a8
+/deepseek-ai-dsh-experimental-identity-oauth-github/model-experience:
+  en: 7597780611900bff
+  zh: da4478b411dc31dd
+/deepseek-ai-dsh-experimental-identity-oauth-github/model-experience/kv-cache-effect:
+  en: 60835eca1cee4e0e
+  zh: a7512edccc467f74
+/deepseek-ai-dsh-experimental-identity-oauth-github/known-limitations-and-deferred-work:
+  en: bfed3b5ad8632434
+  zh: 71a71074e076050a
+/deepseek-ai-dsh-experimental-identity-oauth-github/known-limitations-and-deferred-work/dev-note:
+  en: 0225ba087c5266f3
+  zh: 4e706f1b2b984e63

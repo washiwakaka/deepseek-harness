@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-与 `@deepseek-ai/dsh-experimental-collaboration` 和 Typert 一起从 overlay 挂载，不要从默认 Web remotes 列表挂载。`listActors()` 返回 id、kind 和 name。`listMentionModels(actorId, signal)` 返回该真人可以 `@` 的设置模型。`postMessage(agent, { actorId, text, mentions }, signal)` 追加到该 Agent 的 Session，并返回已启动的分支 id；提及真人即邀请该占用者。`claimRoom(agent, actorId, signal)` 在空房间上记下创建人。`publish(agent, actorId, signal)` 把分支上最新 assistant 文本拷到房间。`admitRoomContext(agent, actorId, signal)` 记下尚未编译的房间增量且不 followup。`sendWithRoom(agent, text, actorId, signal)` 先 admit 再 followup 房间 Agent。非占用者得到 `collaboration/forbidden`。
+与 `@deepseek-ai/dsh-experimental-collaboration` 和 Typert 一起从 overlay 挂载，不要从默认 Web remotes 列表挂载。`listActors()` 返回 id、kind 和 name。登录 Remote 在 `@deepseek-ai/dsh-experimental-api-identity`。`listMentionModels(actorId, signal)` 返回该真人可以 `@` 的设置模型。`postMessage(agent, { actorId, text, mentions }, signal)` 追加到该 Agent 的 Session，并返回已启动的分支 id；提及真人即邀请该占用者。`claimRoom(agent, actorId, signal)` 在空房间上记下创建人。`publish(agent, actorId, signal)` 把分支上最新 assistant 文本拷到房间。`admitRoomContext(agent, actorId, signal)` 记下尚未编译的房间增量且不 followup。`sendWithRoom(agent, text, actorId, signal)` 先 admit 再 followup 房间 Agent。非占用者得到 `collaboration/forbidden`。未登录发帖得到 `collaboration/unauthorized`。
 
 -----
 
@@ -46,7 +46,7 @@ kind: "package-reference"
 
 - [协作 Host](../collaboration/README.zh.md) — 房间事件与按占用者编译。
 - [新增 Remote API](../../../docs/cookbook/adding-a-remote-api.zh.md) — `@Remote` 约定。
-- [Overlay](../collaboration-profile/README.zh.md) — `--patch` 启动。
+- [协作房间组合包](../collaboration-profile/README.zh.md) — 插件页或 `dsh plugin add`。
 - [实验性包](../README.zh.md) — 隔离。
 
 -----

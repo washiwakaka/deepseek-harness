@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-experimental-collaboration/client'
-import { isOwnedBranch, sessionVisibleTo } from '../src/client/visibility.ts'
+import { isOwnedBranch } from '../src/client/visibility.ts'
 
 const ROOM = SessionId('room')
 const BRANCH = SessionId('branch')
-const OPEN = SessionId('open')
 
 function list(values: SessionListState['projectionsBySession']): SessionListState {
   const ids = Object.keys(values) as SessionId[]
@@ -25,34 +24,8 @@ function list(values: SessionListState['projectionsBySession']): SessionListStat
   }
 }
 
-describe('collaboration session visibility', () => {
-  it('hides unclaimed sessions and a claimed room until invite', () => {
-    const snapshot = list({
-      [ROOM]: {
-        state: 'ready',
-        error: null,
-        values: {
-          collaboration: {
-            occupants: ['alice'] as never,
-            children: { a: BRANCH },
-            messages: [],
-            watermarks: {},
-          },
-        },
-      },
-      [BRANCH]: { state: 'ready', error: null, values: {} },
-      [OPEN]: { state: 'ready', error: null, values: {} },
-    })
-    expect(sessionVisibleTo('alice', snapshot, ROOM)).toBe(true)
-    expect(sessionVisibleTo('alice', snapshot, BRANCH)).toBe(true)
-    expect(sessionVisibleTo('bob', snapshot, ROOM)).toBe(false)
-    expect(sessionVisibleTo('bob', snapshot, BRANCH)).toBe(false)
-    expect(sessionVisibleTo('bob', snapshot, OPEN)).toBe(false)
-    expect(sessionVisibleTo('alice', snapshot, OPEN, new Set(['open']))).toBe(true)
-    expect(sessionVisibleTo(undefined, snapshot, ROOM)).toBe(true)
-  })
-
-  it('shows the shared room after invite and only the mentioning human\'s branch', () => {
+describe('collaboration branch ownership', () => {
+  it('shows only the mentioning human\'s branch as owned', () => {
     const bobs = SessionId('bob-branch')
     const snapshot = list({
       [ROOM]: {
@@ -71,11 +44,6 @@ describe('collaboration session visibility', () => {
       [BRANCH]: { state: 'ready', error: null, values: {} },
       [bobs]: { state: 'ready', error: null, values: {} },
     })
-    expect(sessionVisibleTo('bob', snapshot, ROOM)).toBe(true)
-    expect(sessionVisibleTo('bob', snapshot, BRANCH)).toBe(false)
-    expect(sessionVisibleTo('bob', snapshot, bobs)).toBe(true)
-    expect(sessionVisibleTo('alice', snapshot, BRANCH)).toBe(true)
-    expect(sessionVisibleTo('alice', snapshot, bobs)).toBe(false)
     expect(isOwnedBranch('alice', snapshot, BRANCH)).toBe(true)
     expect(isOwnedBranch('bob', snapshot, BRANCH)).toBe(false)
     expect(isOwnedBranch('bob', snapshot, bobs)).toBe(true)

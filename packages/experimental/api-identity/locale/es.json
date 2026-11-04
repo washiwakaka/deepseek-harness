@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "API de identidad",
+    "description": "Permite al navegador registrarse, iniciar sesión y gestionar las líneas de negocio."
+  }
+}

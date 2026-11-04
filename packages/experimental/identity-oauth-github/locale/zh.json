@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub 登录",
+    "description": "向 identity 登记 GitHub 登录方式。尚未完成授权。"
+  }
+}

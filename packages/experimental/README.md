@@ -69,9 +69,13 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`liveshare`](liveshare/README.md) | Opt-in LiveShare host bundle: Relay-backed Session sharing at the `view` or `write` tier, with forking and attachment uploads as independent switches | injects `connection`; serves the viewer page through the Host's web resources |
 | [`liveshare-protocol`](liveshare-protocol/README.md) | Wire frames and the identity contract shared by the owner bundle and the Relay | library and protocol — no ctx key |
 | [`voice-input-bundle`](voice-input-bundle/README.md) | Default-disabled optional voice input composition | — |
+| [`identity`](identity/README.md) | Local username/password accounts and a sign-in method registry | `ctx.identity` |
+| [`identity-oauth-github`](identity-oauth-github/README.md) | Advertises GitHub as an identity OAuth method | — |
+| [`api-identity`](api-identity/README.md) | Authenticated register, sign-in, and account status | `ctx.identityController` |
+| [`client-ui-identity`](client-ui-identity/README.md) | Sidebar account chip and sign-in dialog | `ctx.identitySession` |
 | [`collaboration`](collaboration/README.md) | Shared room of humans and @-invoked AI occupants | `ctx.collaboration` |
 | [`api-collaboration`](api-collaboration/README.md) | Authenticated room posts and occupant roster | `ctx.collaborationController` |
-| [`collaboration-profile`](collaboration-profile/README.md) | Source `--patch` overlay for the room Host, Remote, and Client UI | — |
+| [`collaboration-profile`](collaboration-profile/README.md) | Optional bundle for the room Host, Remote, Client UI, and identity | — |
 | [`client-ui-collaboration`](client-ui-collaboration/README.md) | Room-message Chat rows, a header badge, and a composer post button | — |
 | [`client-ui-stats`](client-ui-stats/README.md) | Per-turn and per-step context, timing, cache, and tool cost for Web | — |
 | [`auto-review`](auto-review/README.md) | Explicit Web layer for same-model review before each native or PTC inner tool call | — |

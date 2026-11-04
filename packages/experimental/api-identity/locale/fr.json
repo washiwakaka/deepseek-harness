@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "API d'identité",
+    "description": "Permet au navigateur de s'inscrire, de se connecter et de gérer les appartenances aux lignes métier."
+  }
+}

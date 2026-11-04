@@ -21,8 +21,7 @@ import { RoomThinkingView, type RoomThinkingInjected } from './RoomThinkingView.
 import { collaborationMessageDefinition } from './message-definition.ts'
 import { collaborationThinkingDefinition } from './thinking-definition.ts'
 import { collaborationMentionSource } from './mention-source.ts'
-import { claimRoom, postRoomDraft, publishFromChild, sendWithRoom } from './post-draft.ts'
-import { sessionVisibleTo } from './visibility.ts'
+import { postRoomDraft, publishFromChild, sendWithRoom } from './post-draft.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type CollaborationRoomKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -85,9 +84,23 @@ function registerCollaborationUi(ctx: ClientContext): void {
         listedHuman = undefined
       })
     }
+    const identity = ctx.get('identitySession') as {
+      getSnapshot(): { current?: { id: string; admin?: boolean } }
+      subscribe(listener: () => void): () => void
+    } | undefined
+    const applyIdentity = (): void => {
+      actors.setLocalAccounts(identity !== undefined)
+      const current = identity?.getSnapshot().current
+      if (current === undefined) {
+        if (identity !== undefined) actors.clearHuman()
+        return
+      }
+      actors.selectHuman(current.id)
+    }
     void ctx.remote.collaboration.listActors().then((result) => {
       if (cancelled || !result.ok) return
       actors.set(result.value)
+      applyIdentity()
       loadMentions(actors.getSnapshot().selectedHumanId)
     }, () => {
       if (cancelled) return
@@ -95,56 +108,34 @@ function registerCollaborationUi(ctx: ClientContext): void {
     const unsubscribe = actors.subscribe(() => {
       loadMentions(actors.getSnapshot().selectedHumanId)
     })
-    const seen = new Set<string>()
-    const claimed = new Set<string>()
+    const unsubIdentity = identity?.subscribe(() => {
+      void ctx.remote.collaboration.listActors().then((result) => {
+        if (cancelled || !result.ok) return
+        actors.set(result.value)
+        applyIdentity()
+      }, () => {
+        if (cancelled) return
+      })
+    })
     const lastByHuman = new Map<string, SessionId>()
     let selectedHuman: string | undefined
-    let catalogReady = false
-    const claimBlank = (id: SessionId, humanId: string) => {
-      if (claimed.has(id)) return
-      claimed.add(id)
-      void claimRoom(ctx.remote.collaboration, id, humanId).then(() => undefined, () => {
-        if (cancelled) return
-        claimed.delete(id)
-      })
-    }
     const syncAccess = () => {
       const humanId = actors.getSnapshot().selectedHumanId
       const catalog = ctx.sessions.list.getSnapshot()
       const switched = selectedHuman !== undefined && humanId !== selectedHuman
       selectedHuman = humanId
-      if (humanId === undefined) {
-        ctx.uiWorkspace.filterSessions(() => true)
-        return
-      }
+      if (humanId === undefined) return
       const current = Object.values(catalog.byId).find(row => (row.retainedBy.mainView ?? 0) > 0)
-      if (!switched && current?.blank === true) claimBlank(current.id, humanId)
-      ctx.uiWorkspace.filterSessions((id, list) => sessionVisibleTo(humanId, list, id, claimed))
       if (switched) {
         const remembered = lastByHuman.get(humanId)
-        if (remembered !== undefined && sessionVisibleTo(humanId, catalog, remembered, claimed)) {
+        if (remembered !== undefined) {
           if (current?.id !== remembered) ctx.uiWorkspace.openSession(remembered)
         } else if (current !== undefined) {
           ctx.uiWorkspace.clearSession()
         }
-      } else if (current !== undefined && sessionVisibleTo(humanId, catalog, current.id, claimed)) {
-        lastByHuman.set(humanId, current.id)
-      } else if (current !== undefined) {
-        ctx.uiWorkspace.clearSession()
+        return
       }
-      if (!catalogReady) {
-        if (catalog.phase !== 'ready') return
-        for (const id of catalog.ids) seen.add(id)
-        catalogReady = true
-      }
-      if (switched) return
-      for (const id of catalog.ids) {
-        if (seen.has(id)) continue
-        seen.add(id)
-        const row = catalog.byId[id]
-        if (row?.blank !== true) continue
-        claimBlank(id, humanId)
-      }
+      if (current !== undefined) lastByHuman.set(humanId, current.id)
     }
     const unsubActorsAccess = actors.subscribe(syncAccess)
     const unsubList = ctx.sessions.list.subscribe(syncAccess)
@@ -152,20 +143,21 @@ function registerCollaborationUi(ctx: ClientContext): void {
     return () => {
       cancelled = true
       unsubscribe()
+      unsubIdentity?.()
       unsubActorsAccess()
       unsubList()
-      ctx.uiWorkspace.filterSessions(() => true)
     }
   }, 'client-ui-collaboration: listActors')
+  const auth = (): RoomBadgeInjected => ({
+    selectHuman: (id) => { actors.selectHuman(id) },
+    hooks: { actors },
+  })
   ctx.slots.inject(
     'conversation.header.leading',
     () => ctx.slots.register({
       name: 'conversation.header.leading',
       locale: NS,
-      inject: (): RoomBadgeInjected => ({
-        selectHuman: (id) => { actors.selectHuman(id) },
-        hooks: { actors },
-      }),
+      inject: auth,
     }, RoomBadge),
   )
   ctx.slots.inject(

@@ -13,6 +13,10 @@ import { SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-sessio
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
+import { occupancyOf } from '@deepseek-ai/dsh-experimental-identity'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
+import type {} from '@deepseek-ai/dsh-typert-protocol'
+import { createLocalIdentityAccessPolicy, type RoomOccupancy } from './access-policy.ts'
 import {
   humanMayUseProvider,
   listCatalogMentions,
@@ -63,6 +67,18 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     collaboration: CollaborationService
   }
+  interface Events {
+    /**
+     * `session/create` finished announcing the Agent. Occupancy listeners stamp
+     * the creating Peer when `peerId` is present.
+     * @mode serial
+     * @param created - the new Agent and the creating Remote Peer id, when any.
+     */
+    'api-session/conversation-created'(created: {
+      readonly agent: Agent
+      readonly peerId?: string
+    }): void
+  }
 }
 
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
@@ -94,13 +110,11 @@ function positiveLimit(name: string, value: number): number {
 
 /**
  * Resolve and freeze the Config roster.
- * @param actors - raw Config occupants.
+ * @param actors - raw Config occupants. Empty is valid when identity supplies humans.
  * @returns unique resolved occupants.
  */
 function resolveRoster(actors: readonly ActorConfig[]): readonly ResolvedActor[] {
-  if (actors.length === 0) {
-    throw new CollaborationError('actors must list at least one occupant', 'COLLAB_INVALID_CONFIG')
-  }
+  if (actors.length === 0) return []
   const seen = new Set<string>()
   const resolved: ResolvedActor[] = []
   for (const actor of actors) {
@@ -118,6 +132,7 @@ function resolveRoster(actors: readonly ActorConfig[]): readonly ResolvedActor[]
         name: actor.name,
         group: actor.group ?? '',
         providers: actor.providers ?? [],
+        models: actor.models ?? [],
       })
       continue
     }
@@ -150,6 +165,7 @@ export class CollaborationService extends Service {
       name: z.string(),
       group: z.string().default(''),
       providers: z.array(z.string()).default([]),
+      models: z.array(z.string()).default([]),
       provider: z.string().default(''),
       model: z.string().default(''),
     })).default([...defaultActors]),
@@ -161,6 +177,7 @@ export class CollaborationService extends Service {
   private readonly maxMessageBytes: number
   private journal!: CollaborationJournal
   private readonly childHandles = new Map<string, AgentHandle>()
+  private readonly occupancyCache = new Map<string, RoomOccupancy>()
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'collaboration')
@@ -175,6 +192,31 @@ export class CollaborationService extends Service {
   protected async [Service.init](): Promise<void> {
     const handle = await this.ctx.sessionProjections.register(collaborationProjectionDefinition)
     this.journal = new CollaborationJournal(this.ctx, handle)
+    this.ctx.on('agent/created', async ({ agent, source }) => {
+      await this.claimCreatedRoot(agent.session, source)
+    })
+    this.ctx.on('api-session/conversation-created', async ({ agent, peerId }) => {
+      await this.claimCreatedRoot(agent.session, 'startup', peerId)
+    })
+    await this.hydrateOccupancy()
+    this.ctx.inject(['remoteAccess'], (ctx) => {
+      ctx.remoteAccess.registerPolicy('local-identity', createLocalIdentityAccessPolicy({
+        accountForBrowserSession: id => ctx.get('identity')?.accountForBrowserSession(id),
+        listedSessions: () => {
+          const ids: SessionId[] = []
+          const seen = new Set<string>()
+          const add = (id: SessionId) => {
+            if (seen.has(id)) return
+            seen.add(id)
+            ids.push(id)
+          }
+          for (const session of ctx.get('sessions')?.list() ?? []) add(session.id)
+          for (const id of this.occupancyCache.keys()) add(SessionId(id))
+          return ids
+        },
+        occupancy: sessionId => this.occupancyOf(sessionId),
+      }))
+    })
     this.ctx.effect(() => async () => {
       const handles = [...this.childHandles.values()]
       this.childHandles.clear()
@@ -184,10 +226,10 @@ export class CollaborationService extends Service {
 
   /**
    * List Host occupants for this process. Clients use the Remote of the same name.
-   * @returns humans and optional Config AI occupants in Config order.
+   * @returns identity humans, then Config occupants.
    */
   listActors(): readonly ResolvedActor[] {
-    return this.roster
+    return [...this.identityHumans(), ...this.roster]
   }
 
   /**
@@ -196,7 +238,7 @@ export class CollaborationService extends Service {
    * @returns advertised models on allowed providers, skipping providers whose catalog fails.
    */
   async listMentionModels(actorId: ActorId): Promise<readonly ResolvedAiActor[]> {
-    return await listCatalogMentions(this.ctx.llm, this.requireHuman(actorId))
+    return await listCatalogMentions(this.ctx.llm, this.postingHuman(actorId))
   }
 
   /**
@@ -215,7 +257,7 @@ export class CollaborationService extends Service {
     if (request.text.length === 0) {
       throw new CollaborationError('message text must be non-empty', 'COLLAB_INVALID_ARGUMENT')
     }
-    const author = this.requireHuman(request.actorId)
+    const author = this.postingHuman(request.actorId)
     const resolved = await this.resolveMentions(author, request.mentions ?? [])
     const childSessionIds: SessionId[] = []
     await this.journal.transact(session.id, async () => {
@@ -258,10 +300,46 @@ export class CollaborationService extends Service {
    * @param actorId - posting human.
    */
   async claimRoom(session: Session, actorId: ActorId): Promise<void> {
-    const author = this.requireHuman(actorId)
+    const author = this.postingHuman(actorId)
     await this.journal.transact(session.id, async () => {
       this.assertCanAccess(session, author)
       await this.admitHumans(session, [author])
+    })
+  }
+
+  /**
+   * Stamp the signed-in account as creator while `session/create` is still on
+   * the stack. Forks and resumes stay unchanged. A leftover empty room is
+   * still `claimRoom`able later.
+   * @param session - newly announced Agent Session.
+   * @param source - why this Agent lifecycle started.
+   * @param peerId - creating Remote Peer, when `session/create` still holds the invocation.
+   */
+  private async claimCreatedRoot(session: Session, source: string, peerId?: string): Promise<void> {
+    if (source !== 'startup') return
+    if (session.header.parentSession !== undefined) return
+    const identity = this.ctx.get('identity')
+    if (identity === undefined) return
+    const signed = peerId === undefined
+      ? identity.currentAccount()
+      : identity.accountForBrowserSession(peerId)
+    if (signed === undefined) return
+    try {
+      if (this.journal.state(session).occupants.length > 0) return
+    } catch (projectionError) {
+      void projectionError
+      return
+    }
+    const occupancy = occupancyOf(signed)
+    await this.journal.transact(session.id, async () => {
+      await this.admitHumans(session, [{
+        id: ActorId(signed.id),
+        kind: 'human',
+        name: signed.name,
+        group: occupancy.group,
+        providers: occupancy.providers,
+        models: occupancy.models,
+      }])
     })
   }
 
@@ -271,7 +349,7 @@ export class CollaborationService extends Service {
    * @param actorId - human occupant publishing from the branch.
    */
   async publishFromChild(child: Session, actorId: ActorId): Promise<void> {
-    const publisher = this.requireHuman(actorId)
+    const publisher = this.postingHuman(actorId)
     const mention = lastMentionSource(child)
     if (mention === undefined) {
       throw new CollaborationError('session is not a collaboration branch', 'COLLAB_NOT_BRANCH')
@@ -334,7 +412,7 @@ export class CollaborationService extends Service {
    */
   async admitRoomContext(session: Session, actorId: ActorId): Promise<void> {
     if (session.header.isSeeded) return
-    const author = this.requireHuman(actorId)
+    const author = this.postingHuman(actorId)
     await this.journal.transact(session.id, async () => {
       this.assertCanAccess(session, author)
       await this.admitHumans(session, [author])
@@ -364,7 +442,51 @@ export class CollaborationService extends Service {
    * @param actorId - occupant identity.
    * @returns the resolved occupant.
    */
+  private postingHuman(actorId: ActorId): ResolvedHumanActor {
+    const identity = this.ctx.get('identity')
+    if (identity !== undefined) {
+      const signed = identity.currentAccount()
+      if (signed === undefined) {
+        throw new CollaborationError('sign in before posting', 'COLLAB_NOT_SIGNED_IN')
+      }
+      if (actorId !== ActorId(signed.id)) {
+        throw new CollaborationError(
+          `actor "${actorId}" is not the signed-in account`,
+          'COLLAB_ACCESS_DENIED',
+        )
+      }
+      const occupancy = occupancyOf(signed)
+      return {
+        id: ActorId(signed.id),
+        kind: 'human',
+        name: signed.name,
+        group: occupancy.group,
+        providers: occupancy.providers,
+        models: occupancy.models,
+      }
+    }
+    return this.requireHuman(actorId)
+  }
+
+  private identityHumans(): readonly ResolvedHumanActor[] {
+    const identity = this.ctx.get('identity')
+    if (identity === undefined) return []
+    return identity.listAccounts().map((account) => {
+      const occupancy = occupancyOf(account)
+      return {
+        id: ActorId(account.id),
+        kind: 'human',
+        name: account.name,
+        group: occupancy.group,
+        providers: occupancy.providers,
+        models: occupancy.models,
+      }
+    })
+  }
+
   private requireActor(actorId: ActorId): ResolvedActor {
+    const fromIdentity = this.identityHumans().find(human => human.id === actorId)
+    if (fromIdentity !== undefined) return fromIdentity
     const actor = this.actorsById.get(actorId)
     if (actor === undefined) {
       throw new CollaborationError(`unknown actor "${actorId}"`, 'COLLAB_UNKNOWN_ACTOR')
@@ -407,14 +529,89 @@ export class CollaborationService extends Service {
    */
   private async admitHumans(session: Session, humans: readonly ResolvedHumanActor[]): Promise<void> {
     const seen = new Set<string>(this.journal.state(session).occupants)
+    let admitted = false
     for (const human of humans) {
       if (seen.has(human.id)) continue
       seen.add(human.id)
+      admitted = true
       await this.journal.appendAndFlush(session, {
         type: 'collaboration/occupant',
         data: { version: 1, actorId: human.id },
       })
     }
+    if (admitted) {
+      this.rememberOccupancy(session)
+      this.refreshAccess()
+    }
+  }
+
+  private occupancyOf(sessionId: SessionId): RoomOccupancy | undefined {
+    const live = this.ctx.get('sessions')?.get(sessionId)
+    if (live !== undefined) {
+      try {
+        const room = this.journal.state(live)
+        this.rememberOccupancyState(sessionId, room)
+        return this.occupancyCache.get(sessionId)
+      } catch (projectionError) {
+        void projectionError
+      }
+    }
+    return this.occupancyCache.get(sessionId)
+  }
+
+  private rememberOccupancy(session: Session): void {
+    try {
+      this.rememberOccupancyState(session.id, this.journal.state(session))
+    } catch (projectionError) {
+      void projectionError
+    }
+  }
+
+  private rememberOccupancyState(sessionId: SessionId, room: {
+    readonly occupants: readonly string[]
+    readonly children: Readonly<Record<string, string>>
+    readonly childOwners: Readonly<Record<string, string>>
+  }): void {
+    this.occupancyCache.set(sessionId, {
+      occupants: [...room.occupants],
+      children: { ...room.children },
+      childOwners: { ...room.childOwners },
+    })
+  }
+
+  private async hydrateOccupancy(): Promise<void> {
+    const persistence = this.ctx.get('sessionPersistence')
+    if (persistence === undefined) return
+    let listed: Awaited<ReturnType<typeof persistence.list>>
+    try {
+      listed = await persistence.list()
+    } catch (listError) {
+      void listError
+      return
+    }
+    for (const snapshot of listed) {
+      try {
+        const handle = await persistence.open(snapshot.header.id, 'read')
+        try {
+          const { events } = await handle.read()
+          let state = collaborationProjectionDefinition.init(snapshot.header, handle.inheritedEventCount)
+          for (const event of events) {
+            state = collaborationProjectionDefinition.apply(state, event)
+          }
+          if (state.failure !== undefined) continue
+          this.rememberOccupancyState(snapshot.header.id, state)
+        } finally {
+          await handle.close()
+        }
+      } catch (hydrateError) {
+        void hydrateError
+      }
+    }
+    this.refreshAccess()
+  }
+
+  private refreshAccess(): void {
+    this.ctx.get('remoteAccess')?.invalidate()
   }
 
   /**
@@ -434,6 +631,11 @@ export class CollaborationService extends Service {
     for (const id of mentions) {
       if (seen.has(id)) continue
       seen.add(id)
+      const fromIdentity = this.identityHumans().find(human => human.id === id)
+      if (fromIdentity !== undefined) {
+        humans.push(fromIdentity)
+        continue
+      }
       const configured = this.actorsById.get(id)
       if (configured !== undefined) {
         if (configured.kind === 'human') humans.push(configured)
@@ -572,6 +774,8 @@ export class CollaborationService extends Service {
         baseSeq: throughSeq,
       },
     })
+    this.rememberOccupancy(session)
+    this.refreshAccess()
     return handle.agent
   }
 

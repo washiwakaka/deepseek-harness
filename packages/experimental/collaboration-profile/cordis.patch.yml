@@ -1,10 +1,34 @@
-# Source-launch overlay. Default Web does not load these rows.
+# Optional Web layer. Default Web does not load these rows until the bundle is enabled.
+#   dsh plugin --profile web add @deepseek-ai/dsh-experimental-collaboration-profile
+# Source-launch shortcut:
 #   pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.yml
-# Humans live on the Host plugin; Clients call listActors and listMentionModels for Settings `@` models.
+# Sign in from the sidebar chip above New session. Clients call listActors and listMentionModels for Settings `@` models.
 
 - insert:
+    - id: identity
+      name: '@deepseek-ai/dsh-experimental-identity'
+      config:
+        admins:
+          - admin
+        lines:
+          - id: core
+            name: Core
+          - id: guest
+            name: Guest
+
+    - id: identity-oauth-github
+      name: '@deepseek-ai/dsh-experimental-identity-oauth-github'
+
+    - id: api-identity
+      name: '@deepseek-ai/dsh-experimental-api-identity'
+
+    - id: ui-identity
+      name: '@deepseek-ai/dsh-experimental-client-ui-identity'
+
     - id: collaboration
       name: '@deepseek-ai/dsh-experimental-collaboration'
+      config:
+        actors: []
 
     - id: api-collaboration
       name: '@deepseek-ai/dsh-experimental-api-collaboration'

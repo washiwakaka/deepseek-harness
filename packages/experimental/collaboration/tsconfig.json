@@ -17,6 +17,9 @@
     { "path": "../../session/session-persistence" },
     { "path": "../../session/session-projection" },
     { "path": "../../session/session-title" },
-    { "path": "../../workspace/workspace" }
+    { "path": "../../workspace/workspace" },
+    { "path": "../../api/remote-access/tsconfig.host.json" },
+    { "path": "../../typert/protocol" },
+    { "path": "../identity" }
   ]
 }

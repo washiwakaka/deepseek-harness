@@ -4,7 +4,11 @@ import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ActorId, CollaborationError } from '@deepseek-ai/dsh-experimental-collaboration'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { CollaborationActorRow, CollaborationPostRequest, CollaborationPostResult } from './types.ts'
+import type {
+  CollaborationActorRow,
+  CollaborationPostRequest,
+  CollaborationPostResult,
+} from './types.ts'
 
 export type * from './types.ts'
 
@@ -31,7 +35,10 @@ function toRemoteError(error: CollaborationError, actorId: string): RemoteError 
       return new RemoteError('collaboration/invalid-argument', error.message, { reason: error.message }, { cause: error })
     case 'COLLAB_ACCESS_DENIED':
       return new RemoteError('collaboration/forbidden', error.message, { actorId }, { cause: error })
+    case 'COLLAB_NOT_SIGNED_IN':
+      return new RemoteError('collaboration/unauthorized', error.message, { reason: error.message }, { cause: error })
     case 'COLLAB_INVALID_ARGUMENT':
+    case 'COLLAB_INVALID_CONFIG':
       return new RemoteError('collaboration/invalid-argument', error.message, { reason: error.message }, { cause: error })
     case 'COLLAB_NOT_BRANCH':
       return new RemoteError('collaboration/invalid-argument', error.message, { reason: error.message }, { cause: error })

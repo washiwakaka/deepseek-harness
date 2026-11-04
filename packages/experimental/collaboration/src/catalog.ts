@@ -41,6 +41,16 @@ export function humanMayUseProvider(human: ResolvedHumanActor, provider: string)
 }
 
 /**
+ * Whether this human's model allowlist includes the Settings mention route.
+ * @param human - posting author.
+ * @param route - `{provider}/{model}`.
+ * @returns false when the human lists models and this route is absent.
+ */
+export function humanMayUseModel(human: ResolvedHumanActor, route: string): boolean {
+  return human.models.length === 0 || human.models.includes(route)
+}
+
+/**
  * Advertised models this human may `@`, in provider then model order.
  * @param llm - live Host LLM registry.
  * @param human - posting author whose `providers` allowlist applies.
@@ -62,8 +72,10 @@ export async function listCatalogMentions(
       continue
     }
     for (const model of models) {
+      const id = mentionRouteId(provider.id, model.id)
+      if (!humanMayUseModel(human, id)) continue
       rows.push({
-        id: ActorId(mentionRouteId(provider.id, model.id)),
+        id: ActorId(id),
         kind: 'ai',
         name: model.name,
         provider: provider.id,

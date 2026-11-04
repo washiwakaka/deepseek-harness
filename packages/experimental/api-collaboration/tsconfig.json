@@ -9,6 +9,7 @@
     { "path": "../../../vendor/cordis" },
     { "path": "../../core/agent" },
     { "path": "../collaboration" },
+    { "path": "../identity" },
     { "path": "../../typert/protocol" }
   ]
 }

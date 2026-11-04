@@ -12,6 +12,7 @@ import type {
   ConnectionRpcHandler,
 } from '@deepseek-ai/dsh-client-connection'
 import type { RemoteAccessDecision } from '@deepseek-ai/dsh-api-remote-access'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { callResources, eventResources } from './access.ts'
 import { Deque } from '@deepseek-ai/dsh-deque'
 import type { WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
@@ -130,8 +131,21 @@ interface RemoteEventClient {
   readonly deliveries: Map<RemoteEventId, PendingRemoteEvent>
   /** The stream's Peer principal: only the owner answers scoped waterfalls and receives every broadcast. */
   readonly principal: Principal
-  /** Only owner streams receive scoped waterfalls they could answer; other Peers receive admitted broadcasts only. */
+  /** Owner and local-identity answering streams receive scoped waterfalls they could answer. */
   readonly answers: boolean
+  /** Owner streams skip notification ACL; local-identity still filters broadcasts. */
+  readonly skipEventAccess: boolean
+}
+
+/**
+ * Whether this Peer may answer forwarded waterfalls.
+ * @param peer - admitted caller.
+ * @returns true for owner and local-identity answering Peers.
+ */
+function answersForwardedEvents(peer: PeerScope): boolean {
+  if (peer.interactions !== 'answer') return false
+  const kind = peer.principal.kind as string
+  return kind === 'owner' || kind === 'local-identity'
 }
 
 interface PendingRemoteEvent {
@@ -325,8 +339,8 @@ export class TypertGatewayService extends Service implements TypertGateway {
   }
 
   /**
-   * Check for an active owner Client event stream, the only kind that can answer forwarded waterfalls.
-   * @returns whether an owner stream is open and has not been cancelled.
+   * Check for an active answering Client event stream that can settle forwarded waterfalls.
+   * @returns whether an owner or local-identity answering stream is open and has not been cancelled.
    */
   hasLiveClient(): boolean {
     for (const client of this.remoteEventClients.values()) {
@@ -498,9 +512,8 @@ export class TypertGatewayService extends Service implements TypertGateway {
       try {
         assertPeerLive(peer, endpoint)
         requireInteractions(peer, endpoint)
-        // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
-        if (peer.principal.kind !== 'owner') {
-          throw new TypertGatewayError('gateway/invocation-unavailable', endpoint, 'only owner Peers answer forwarded Remote events')
+        if (!answersForwardedEvents(peer)) {
+          throw new TypertGatewayError('gateway/invocation-unavailable', endpoint, 'only answering owner or local-identity Peers answer forwarded Remote events')
         }
         const result = parseRemoteEventResultPayload(payload)
         const client = this.remoteEventClients.get(result.clientId)
@@ -580,12 +593,16 @@ export class TypertGatewayService extends Service implements TypertGateway {
       signal: lifetime,
       deliveries: new Map(),
       principal: peer.principal,
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
-      answers: peer.principal.kind === 'owner',
+      answers: answersForwardedEvents(peer),
+      skipEventAccess: peer.principal.kind === 'owner',
     }
     this.remoteEventClients.set(clientId, client)
     if (client.answers) {
-      for (const pending of this.pendingRemoteEvents.values()) this.deliverRemoteEvent(pending, client)
+      for (const pending of this.pendingRemoteEvents.values()) {
+        if (this.allowsRemoteEventDelivery(client, pending.frame.agentId)) {
+          this.deliverRemoteEvent(pending, client)
+        }
+      }
     }
     try {
       yield { ...REMOTE_EVENT_STREAM_READY, clientId, host: registration.host }
@@ -622,7 +639,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
     let resolved = false
     let resources: readonly RemoteAccessResource[] | undefined
     for (const client of this.remoteEventClients.values()) {
-      if (!client.answers) {
+      if (!client.skipEventAccess) {
         // A non-owner receives the whole notification or nothing: its resources decide, payloads are never trimmed,
         // and a notification with invalid resources reaches no non-owner.
         if (!resolved) {
@@ -691,12 +708,29 @@ export class TypertGatewayService extends Service implements TypertGateway {
       if ([...signals].some(signal => signal.aborted)) abort()
       else {
         for (const client of this.remoteEventClients.values()) {
-          if (client.answers) this.deliverRemoteEvent(pending, client)
+          if (client.answers && this.allowsRemoteEventDelivery(client, source.context.agentId)) {
+            this.deliverRemoteEvent(pending, client)
+          }
         }
       }
     } catch (error) {
       source.reject(error)
     }
+  }
+
+  /**
+   * Whether this answering Client may receive one waterfall for `agentId`.
+   * Owners skip the check. Overlay Peers need `session/follow` on that Session.
+   * @param client - open `$events` subscriber.
+   * @param agentId - waterfall Agent / Session identity.
+   */
+  private allowsRemoteEventDelivery(client: RemoteEventClient, agentId: string): boolean {
+    if (client.skipEventAccess) return true
+    return this.ctx.remoteAccess.decide({
+      principal: client.principal,
+      action: 'session/follow',
+      resources: [{ kind: 'session', id: SessionId(agentId) }],
+    }).kind === 'allow'
   }
 
   private deliverRemoteEvent(pending: PendingRemoteEvent, client: RemoteEventClient): void {

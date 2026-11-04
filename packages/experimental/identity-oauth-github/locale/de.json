@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub-Anmeldung",
+    "description": "Meldet GitHub als Anmeldemethode an. Die Autorisierung ist noch nicht implementiert."
+  }
+}

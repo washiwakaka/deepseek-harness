@@ -45,6 +45,11 @@ export interface ActorConfig {
    * Humans only.
    */
   readonly providers?: string[]
+  /**
+   * Settings mention routes this human may `@`. Empty means every advertised model
+   * on the allowed providers. Humans only.
+   */
+  readonly models?: string[]
   /** Required when {@link kind} is `ai`. */
   readonly provider?: string
   /** Required when {@link kind} is `ai`. */
@@ -55,7 +60,8 @@ export interface ActorConfig {
 export interface Config {
   /**
    * Human authors and optional Config AI occupants.
-   * Omit to use Alice–James overlay humans; Clients list `@` models through `listMentionModels`.
+   * Omit to use Alice–James overlay humans. Empty is valid when `ctx.identity`
+   * supplies humans. Clients list `@` models through `listMentionModels`.
    */
   readonly actors?: ActorConfig[]
   /** Maximum UTF-8 bytes in one room message. */
@@ -69,6 +75,7 @@ export interface ResolvedHumanActor {
   readonly name: string
   readonly group: string
   readonly providers: string[]
+  readonly models: string[]
 }
 
 /** Resolved AI occupant. */

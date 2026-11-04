@@ -1,4 +1,5 @@
 /** Node half: registers the /api prefix route bridging to the api gateway. */
+import { createHash, createHmac } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { createServer, request as httpRequest } from 'node:http'
 import { Readable } from 'node:stream'
@@ -7,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
-import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import { credentialKey, type CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { IndexInjection, WebServer, WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import {
   API_PATH,
@@ -126,6 +127,26 @@ async function mounted(
   }
 }
 
+/** Sign a leftover v1 cookie with Connection's stored browser-session secret. */
+async function leftoverV1Cookie(ctx: Context, authority: string): Promise<string> {
+  const record = await ctx.credentials.readRecord(credentialKey('client-connection', 'browser-session'))
+  if (record?.kind !== 'grant' || typeof record.payload !== 'object' || record.payload === null) {
+    throw new Error('browser-session secret is missing')
+  }
+  const secret = Reflect.get(record.payload, 'secret')
+  if (typeof secret !== 'string') throw new Error('browser-session secret is not a string')
+  const issuedAt = Date.now()
+  const body = Buffer.from(JSON.stringify({
+    version: 1,
+    authority,
+    issuedAt,
+    expiresAt: issuedAt + 30 * 86_400_000,
+  }), 'utf8').toString('base64url')
+  const signature = createHmac('sha256', Buffer.from(secret, 'base64url')).update(body).digest('base64url')
+  const name = `dsh-auth-${createHash('sha256').update(authority).digest('base64url')}`
+  return `${name}=v1.${body}.${signature}`
+}
+
 /** Exchange a service's process token for one authority-bound Cookie header. */
 function browserCookie(connection: HostConnectionHandle, authority: string): string {
   const url = new URL(connection.authenticatedUrl(`http://${authority}`))
@@ -206,7 +227,9 @@ describe('connection node half', () => {
       await fiber.await()
       const connection = ctx.get('connection') as HostConnectionHandle
       const cookie = browserCookie(connection, 'localhost')
-      expect(connection.admit(fakeRequest({ host: 'localhost', cookie }))).toEqual({ peer: connection.browserPeer })
+      const admission = connection.admit(fakeRequest({ host: 'localhost', cookie }))
+      expect(admission).toMatchObject({ peer: { principal: { kind: 'owner' } } })
+      if ('peer' in admission) expect(admission.peer).not.toBe(connection.browserPeer)
     } finally {
       await fiber.dispose()
     }
@@ -583,7 +606,10 @@ describe('connection node half', () => {
     expect(connection.admit(fakeRequest({ host: 'other.example' }))).toEqual({ rejection: 403 })
     expect(connection.admit(fakeRequest({ host: '127.0.0.1:3080' }))).toEqual({ rejection: 401 })
     const cookie = browserCookie(connection, '127.0.0.1:3080')
-    expect(connection.admit(fakeRequest({ host: '127.0.0.1:3080', cookie }))).toEqual({ peer: connection.browserPeer })
+    const admittedBrowser = connection.admit(fakeRequest({ host: '127.0.0.1:3080', cookie }))
+    expect(admittedBrowser).toMatchObject({ peer: { principal: { kind: 'owner' } } })
+    if ('rejection' in admittedBrowser) throw new Error('authenticated browser was refused')
+    expect(admittedBrowser.peer).not.toBe(connection.browserPeer)
 
     const route = routes.find(candidate => candidate.path === API_PATH)!
     const request: ClientRequest = {
@@ -602,7 +628,7 @@ describe('connection node half', () => {
       body: JSON.stringify(request),
     }), connection.browserPeer)
     expect(direct.status).toBe(200)
-    expect(peers).toEqual([connection.browserPeer, connection.browserPeer])
+    expect(peers).toEqual([admittedBrowser.peer, connection.browserPeer])
     expect(connection.browserPeer.principal).toEqual({ kind: 'owner' })
 
     // Racing disposals share one completion, and the scope goes with the Connection.
@@ -726,14 +752,18 @@ describe('operator-scoped connect', () => {
     } finally { await host.dispose() }
   })
 
-  it('keeps all browser cookies on the shared operator and creates independent API operators', async () => {
+  it('gives each browser cookie its own operator and creates independent API operators', async () => {
     const host = await mounted()
     try {
       const cookie = browserCookie(host.connection, 'localhost')
-      expect(admitted(host.connection, cookie)).toBe(host.connection.browserPeer)
-      expect(admitted(host.connection, browserCookie(host.connection, 'localhost'))).toBe(host.connection.browserPeer)
+      const first = admitted(host.connection, cookie)
+      expect(first).not.toBe(host.connection.browserPeer)
+      expect(first.principal).toEqual({ kind: 'owner' })
+      expect(admitted(host.connection, cookie)).toBe(first)
+      expect(admitted(host.connection, await leftoverV1Cookie(host.ctx, 'localhost'))).toBe(host.connection.browserPeer)
+      expect(admitted(host.connection, browserCookie(host.connection, 'localhost'))).not.toBe(first)
       const api = await connect(host, '', { cookie })
-      expect(admitted(host.connection, api.cookie)).not.toBe(host.connection.browserPeer)
+      expect(admitted(host.connection, api.cookie)).not.toBe(first)
       const second = await connect(host, '', { cookie: api.cookie })
       expect(admitted(host.connection, second.cookie)).not.toBe(admitted(host.connection, api.cookie))
       const denied = fakeResponse()
@@ -878,8 +908,9 @@ describe('operator-scoped connect', () => {
       expect(host.connection.admit(request)).toEqual({ rejection: 401 })
       const restarted = await mounted(undefined, 'http:', host.ctx.credentials)
       try {
-        expect(admitted(restarted.connection, browser.cookie)).toBe(restarted.connection.browserPeer)
+        expect(admitted(restarted.connection, browser.cookie).id).toBe(browserPeer.id)
         expect(admitted(restarted.connection, browser.cookie)).not.toBe(browserPeer)
+        expect(admitted(restarted.connection, browser.cookie)).not.toBe(restarted.connection.browserPeer)
         expect(restarted.connection.admit(fakeRequest({ host: 'localhost', cookie: api.cookie }))).toEqual({ rejection: 401 })
       } finally { await restarted.dispose() }
     } finally { await host.dispose() }

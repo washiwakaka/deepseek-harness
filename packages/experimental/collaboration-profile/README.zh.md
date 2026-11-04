@@ -1,6 +1,6 @@
 ---
-description: "用源码 --patch overlay 启动协作房间的 Host 与 Remote 插件。"
-kind: "package-library"
+description: "用一个实验性组合包启用协作房间、本地身份和 GitHub 登录方式公示。"
+kind: "package-bundle"
 ---
 
 # @deepseek-ai/dsh-experimental-collaboration-profile
@@ -9,7 +9,7 @@ kind: "package-library"
 
 ## 概述
 
-用本 overlay 在贡献者工作区加载协作房间，而不把它加入默认 Web 应用。把 patch 文件传给 `dsh web --patch`。占用者在 Host 插件上；Client 调 `listActors`。
+`dsh-experimental-collaboration-profile` 用一个组合包启用协作房间、本地身份和 GitHub 登录方式公示。占用者在侧栏「新会话」按钮上方的芯片注册。Client 调 `listActors`。本包随 dsh 安装提供，默认关闭。可在插件页开启，或添加到已初始化的 Web profile。
 
 ## 目录
 
@@ -25,13 +25,23 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
-停掉默认的 `pnpm run dev:web`，然后：
+### 安装到 profile
+
+把本包加到已初始化的 Web profile：
+
+```sh
+dsh plugin --profile web add @deepseek-ai/dsh-experimental-collaboration-profile
+```
+
+在 Web 或 Desktop 的插件页开启「协作房间」。执行 `dsh plugin --profile <name> remove @deepseek-ai/dsh-experimental-collaboration-profile` 会把该组合包从 profile 的有序层列表中移除。
+
+在贡献者工作区，源码启动仍可使用同一份 patch 文件：
 
 ```sh
 pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.yml
 ```
 
-演示名单不对时，在 collaboration 插件上覆盖 Host `actors`。默认 Web 隔离仍须拒绝这些行。
+本层挂载 identity 和协作，并把 `actors` 设为 `[]`，同时播种 Core 与 Guest 业务线，Config `admins` 为 `[admin]`，并在 identity 之后插入 GitHub 方法插件。在侧栏「新会话」按钮上方用用户名 `admin` 注册即成为管理员，然后加入一条业务线并选择模型。该管理员能看到全部用户、业务线和 Session，并可在账号面板把后续用户设为管理员。在组合包启用之前，默认 Web 隔离仍须拒绝这些行。
 
 -----
 
@@ -41,7 +51,12 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 <details>
 <summary>实现内部 — 点击展开</summary>
 
-该 patch 插入 `@deepseek-ai/dsh-experimental-collaboration`、`@deepseek-ai/dsh-experimental-api-collaboration` 和 `@deepseek-ai/dsh-experimental-client-ui-collaboration`。本包只承载 patch，没有运行时服务。回车仍走普通 Session prompt；Client UI 包提供额外的「发到房间」控件。
+本包的运行时内容是 [`cordis.patch.yml`](cordis.patch.yml)。应用到 Web base 之后，该 patch 插入 identity 的 Host/Remote/UI、GitHub 方法插件，再插入 `@deepseek-ai/dsh-experimental-collaboration`、`@deepseek-ai/dsh-experimental-api-collaboration` 和 `@deepseek-ai/dsh-experimental-client-ui-collaboration`。本包没有运行时服务。回车仍走普通 Session prompt；Client UI 包提供额外的「发到房间」控件。
+
+| 文件 | 作用 |
+|---|---|
+| [`cordis.patch.yml`](cordis.patch.yml) | 叠在 Web base 上的有序 patch |
+| [`src/index.ts`](src/index.ts) | 空模块入口；运行时内容是 patch |
 
 </details>
 
@@ -51,6 +66,8 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 ## 进一步探索
 
 - [协作 Host](../collaboration/README.zh.md)
+- [本地身份](../identity/README.zh.md)
+- [GitHub 登录方式](../identity-oauth-github/README.zh.md)
 - [协作 Remote](../api-collaboration/README.zh.md)
 - [新增协作房间](../../../docs/cookbook/adding-a-collaboration-room.zh.md)
 - [实验性包](../README.zh.md)
@@ -60,7 +77,7 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 <a id="model-experience"></a>
 ## 模型体验
 
-无直接模型输入，因为本 overlay 只挂载其它插件；被 @ 的 AI 子任务由 Host 协作包编译。
+无直接模型输入，因为本组合包只挂载其它插件；被 @ 的 AI 子任务由 Host 协作包编译。
 
 #### KV Cache 影响
 
@@ -70,8 +87,10 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- 本 overlay 不是 Official bundle，也没有插件管理器图标。
+- **仅按需开启** — 本包随安装提供且默认关闭；随附的 CLI、Web、SDK、ACP 或 Python profile 都不会启用它。
+- **需要 base profile** — 该 patch 依赖 Web base 提供的行 id；它不是独立 profile。
 - Composer 回车仍会 followup 房间 Agent；`@` 芯片由「发到房间」处理。
+- GitHub 授权尚未实现；方法插件只公示 `kind: 'oauth'`。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -81,6 +100,6 @@ pnpm dsh web --patch packages/experimental/collaboration-profile/cordis.patch.ym
 
 本开发备注是给维护者的工作上下文，明确不具权威性。
 
-示例 patch 里 AI 占用者的 `provider`/`model` 必须匹配已加载的 LLM adapter。
+自定义 patch 里 AI 占用者的 `provider`/`model` 必须匹配已加载的 LLM adapter。
 
 </details>

@@ -845,8 +845,9 @@ describe('Typert Remote streams', () => {
 
   it('echoes uplink frames over the WebSocket carrier and fails misused uplinks per stream', async () => {
     const { ctx, service } = await setup(true)
+    const cookie = browserCookie(ctx)
     const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`, {
-      headers: { cookie: browserCookie(ctx) },
+      headers: { cookie },
     })
     await once(socket, 'open')
     const frames: Record<string, unknown>[] = []
@@ -864,7 +865,11 @@ describe('Typert Remote streams', () => {
       ])
     })
     expect(service.returns).toBe(1)
-    expect(service.peers.at(-1)).toBe(ctx.connection.browserPeer)
+    const admitted = ctx.connection.admit({
+      headers: { host: `127.0.0.1:${String(ctx.webServer.port)}`, cookie },
+    })
+    if ('rejection' in admitted) throw new Error('browser cookie was refused')
+    expect(service.peers.at(-1)).toBe(admitted.peer)
 
     sendOpen(socket, 'rejected', 'feed/echo', { prefix: '' })
     socket.send(JSON.stringify({ type: 'item', streamId: 'rejected', value: 1 }))

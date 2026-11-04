@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { Context, symbols } from '@deepseek-ai/cordis'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { apply as applyConnection, inject as connectionInject } from '@deepseek-ai/dsh-client-connection'
 import RemoteAccessService, {
   type RemoteAccessAction,
@@ -38,6 +39,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface PrincipalMap {
     /** Test-only non-owner caller shared by the access specs. */
     'test-guest': { readonly kind: 'test-guest'; readonly guest: string }
+    /** Overlay browser identity; production merge lives in experimental identity. */
+    'local-identity': { readonly kind: 'local-identity'; readonly browserSessionId: string }
   }
   interface TypertLookupMap {
     gatewayAccessAgent: TypertLookup<AccessAgent, string>
@@ -779,6 +782,48 @@ describe('Gateway forwarded events for non-owner Peers', () => {
     abort.abort()
     await guestEvents.return?.()
     await ownerEvents.return?.()
+  })
+
+  it('delivers waterfalls to local-identity only when session/follow is allowed', async () => {
+    const { ctx } = await setup({ connection: true })
+    ctx.remoteAccess.registerPolicy('local-identity', {
+      bindings() {
+        return [{
+          role: { name: 'identity:session-follow', resource: 'session', actions: ['session/follow'] },
+          resource: { kind: 'session', id: SessionId('agent-allowed') },
+        }]
+      },
+    })
+    const push = eventSource(ctx)
+    const local = ctx.connection.createPeer({
+      principal: { kind: 'local-identity', browserSessionId: 'peer-local' },
+    })
+    const abort = new AbortController()
+    const events = (await ctx.typertGateway.wireStream.open(
+      '$events', { args: {} }, (async function* () {})(), local, abort.signal,
+    ))[Symbol.asyncIterator]()
+    await events.next()
+    const settled = vi.fn()
+    const subject = {}
+    push({
+      event: 'fixture/ask',
+      request: { question: 'q', agent: subject },
+      context: { value: ctx.extend({}), subject, agentId: 'agent-secret' },
+      resolve: settled,
+      reject: settled,
+    })
+    push({
+      event: 'fixture/ask',
+      request: { question: 'q2', agent: subject },
+      context: { value: ctx.extend({}), subject, agentId: 'agent-allowed' },
+      resolve: settled,
+      reject: settled,
+    })
+    await expect(events.next()).resolves.toMatchObject({
+      value: { type: 'waterfall', event: 'fixture/ask', agentId: 'agent-allowed' },
+    })
+    abort.abort()
+    await events.return?.()
   })
 
   it('delivers a global event that a global role lists, and drops one whose resource is missing without asking remoteAccess', async () => {

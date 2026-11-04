@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-experimental-collaboration` 让若干真人在一个 Session 里交谈，并用 @ 启动已配置的 AI 占用者。未被提及的行不进入任何 Agent。第一次 @ 把房间前缀拷进该 AI 的子会话，并编译房间帖加上房间 Agent 的 user 与 assistant 轮次；之后再 @ 同一 AI 只发送尚未编译的增量。AI 的回答留在分支上，直到发起 @ 的真人调用 `publishFromChild` 把结论发到房间。侧边栏把分支归在房间下面。从 overlay 挂载，不要从默认 Web 应用挂载。
+`dsh-experimental-collaboration` 让若干真人在一个 Session 里交谈，并用 @ 启动已配置的 AI 占用者。未被提及的行不进入任何 Agent。第一次 @ 把房间前缀拷进该 AI 的子会话，并编译房间帖加上房间 Agent 的 user 与 assistant 轮次；之后再 @ 同一 AI 只发送尚未编译的增量。AI 的回答留在分支上，直到发起 @ 的真人调用 `publishFromChild` 把结论发到房间。侧边栏把分支归在房间下面。从协作房间组合包挂载，不要从默认 Web 应用挂载。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用包含真人和 AI 占用者的 Config 名单挂载插件。调用 `ctx.collaboration.postMessage(session, { actorId, text, mentions })`。普通聊天省略 `mentions`。点名 AI id 以启动那些子会话。点名真人 id 即邀请该占用者；此前房间只对创建人可见。第一次 @ 模型把分支命名为 `{模型} · {房间标题}`，在 header 上写入 `parentSession` 指向房间（从不写 `origin: 'subagent'`），侧边栏只把该分支给发起 @ 的真人看，并归在来源房间下面。发起 @ 的真人从分支发布后，最新 assistant 文本才进入房间。同一房间同一真人再 @ 同一模型会复用这条子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话；换一个房间再 @ 会新建子会话。进程重启后下一次 @ 会冷恢复已持久化的子会话。
+用包含真人和 AI 占用者的 Config 名单挂载插件，或挂载 `@deepseek-ai/dsh-experimental-identity` 并把 `actors` 留空，让真人在那边注册。调用 `ctx.collaboration.postMessage(session, { actorId, text, mentions })`。普通聊天省略 `mentions`。点名 AI id 以启动那些子会话。点名真人 id 即邀请该占用者；此前房间只对创建人可见。第一次 @ 模型把分支命名为 `{模型} · {房间标题}`，在 header 上写入 `parentSession` 指向房间（从不写 `origin: 'subagent'`），侧边栏只把该分支给发起 @ 的真人看，并归在来源房间下面。发起 @ 的真人从分支发布后，最新 assistant 文本才进入房间。同一房间同一真人再 @ 同一模型会复用这条子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话；换一个房间再 @ 会新建子会话。进程重启后下一次 @ 会冷恢复已持久化的子会话。
 
 ### 何时选择
 
@@ -44,7 +44,7 @@ kind: "package-reference"
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `actors` | Alice（`core`）和 Bob–James（`guest`）；空 `providers` 表示设置里已接入的全部提供方 | 真人作者和可选 Config AI 占用者。省略则用 Host 默认的十个 overlay 真人。真人可设 `group` 和 `providers`。`@` 模型来自 `listMentionModels`，不是 Config AI 占用者 |
+| `actors` | Alice（`core`）和 Bob–James（`guest`）；空 `providers` 和 `models` 表示设置里已接入的全部模型 | 真人作者和可选 Config AI 占用者。省略时用 Host 默认的十个 overlay 真人。`ctx.identity` 提供真人时名单可为空。真人可设 `group`、`providers` 和 `models`。identity 占用者只用当前业务线。`@` 模型来自 `listMentionModels`，不是 Config AI 占用者 |
 | `maxMessageBytes` | `65,536` | 一条房间消息的最大 UTF-8 字节数 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-experimental-collaboration)是每个已接受字段及其 JSDoc 的穷尽来源。
@@ -57,7 +57,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部 — 点击展开</summary>
 
-第一个发帖或 `claimRoom` 的真人是创建人。之后的真人在现有占用者 `@` 他们之前不能发帖、发布或发送。房间行是非表层 `collaboration/message` 事件。它们永不进入房间 Session 的 `deriveMessages()`，因此发帖不会开启房间 turn。房间 Agent 的发送仍走 `user/message`，不读取同伴聊天。`admitRoomContext` 把尚未编译的房间增量记成 `collaboration-room-context` 用户消息且不 followup。`sendWithRoom` 先 admit 再对房间 Agent `followup` 草稿，这样 Client 不必在表层 `user/message` 之后再 submit。提及分发读取结构化 `mentions`，按「发起 @ 的真人 × AI 占用者」用 `agents.create` 和 `buildForkSeed` 创建子会话（投影里已有该真人的子会话 id 时改为 `agents.resume`），编译按占用者的誊本（房间帖加上房间 Agent 的 user/assistant 轮次；继承前缀不会进入子会话的 `deriveMessages()`），并对该子会话 `followup`。`collaboration/actor-invoked` 存储编译截止 seq，以便同一真人之后再 @ 同一 AI 只发送尚未编译的增量。子会话的工具事件留在子日志。房间 journal 在 flush 这次 invoke 后释放。发起 @ 的真人调用 `publishFromChild` 把最新 assistant 文本拷到房间。之后再 `publishFromChild` 会拷更新的分支回复。
+第一个发帖或 `claimRoom` 的真人是创建人。加载了 identity 时，已登录的根 Agent 启动会在 `session/create` 返回前把该账号写成创建人。之后的真人在现有占用者 `@` 他们之前不能发帖、发布或发送。房间行是非表层 `collaboration/message` 事件。它们永不进入房间 Session 的 `deriveMessages()`，因此发帖不会开启房间 turn。房间 Agent 的发送仍走 `user/message`，不读取同伴聊天。`admitRoomContext` 把尚未编译的房间增量记成 `collaboration-room-context` 用户消息且不 followup。`sendWithRoom` 先 admit 再对房间 Agent `followup` 草稿，这样 Client 不必在表层 `user/message` 之后再 submit。提及分发读取结构化 `mentions`，按「发起 @ 的真人 × AI 占用者」用 `agents.create` 和 `buildForkSeed` 创建子会话（投影里已有该真人的子会话 id 时改为 `agents.resume`），编译按占用者的誊本（房间帖加上房间 Agent 的 user/assistant 轮次；继承前缀不会进入子会话的 `deriveMessages()`），并对该子会话 `followup`。`collaboration/actor-invoked` 存储编译截止 seq，以便同一真人之后再 @ 同一 AI 只发送尚未编译的增量。子会话的工具事件留在子日志。房间 journal 在 flush 这次 invoke 后释放。发起 @ 的真人调用 `publishFromChild` 把最新 assistant 文本拷到房间。之后再 `publishFromChild` 会拷更新的分支回复。
 
 源码对照：`src/types.ts` 事件、`src/projection.ts` 折叠、`src/compiler.ts` 誊本、`src/journal.ts` 队列、`src/index.ts` 服务。
 
@@ -70,9 +70,9 @@ kind: "package-reference"
 
 - [协作房间 Agent Note](../../../.agents/notes/proposed/feature/2026-10-12-collaboration-room-fork-publish.zh.md) — 非表层房间事件和按占用者编译。
 - [分支、发布与 ACL](../../../.agents/notes/proposed/feature/2026-10-29-collaboration-branch-publish.zh.md) — 答案留在分支上直到发布。
-- [新增协作房间](../../../docs/cookbook/adding-a-collaboration-room.zh.md) — overlay 启动与 Client `@` 模型。
+- [新增协作房间](../../../docs/cookbook/adding-a-collaboration-room.zh.md) — 组合包安装与 Client `@` 模型。
 - [实验性包](../README.zh.md) — 隔离与命名。
-- [Agent Teams](../agent-team/README.zh.md) — 自动化 teammate，不是这个房间。
+- [Agent Teams](../../team/agent-team/README.zh.md) — 自动化 teammate，不是这个房间。
 - [LiveShare](../liveshare/README.zh.md) — 远程分享一个 Session。
 
 -----
@@ -126,10 +126,11 @@ Shared room transcript.
 
 这些限制描述房间目前还不能做的事。
 
-- **Config 名单是 overlay 身份，不是 Host 登录** — 本 overlay 用 Alice/Bob 切换 id 做房间 ACL；以后若有 Host 鉴权身份，会替换这套切换。
+- **已登录身份发帖** — 加载了 `ctx.identity` 时，房间发帖必须使用该 Host 当前登录账号。登录在 identity 插件上，不在本包。
+- **在线占用 ACL** — `remoteAccess` 策略 `local-identity` 按在线占用过滤 Session 的列出、打开和事件。占用者可写自己的房间和分支。管理员可读全部在线 Session，不能写别人的房间。已登录的 `session/create` 在返回前写入创建人。遗留空房间只开放 `claimRoom`。冷 Session 在恢复前不可见。
 - **实验性原型，无稳定性承诺** — 本包公开，但孵化期间契约可以改。
 - **没有旁听、@all 或 AI 之间互相 @** — 只有真人的 `mentions` 列表会开启子会话 turn。
-- **默认 Web 隔离** — 发行应用不得依赖本包；从 overlay 加载。
+- **默认 Web 隔离** — 发行应用不得依赖本包；从协作房间组合包加载。
 
 <a id="dev-note"></a>
 ### 开发备注

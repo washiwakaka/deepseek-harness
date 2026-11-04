@@ -14,6 +14,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'collaboration/invalid-argument': { readonly reason: string }
     /** The room rejected the post after validation. */
     'collaboration/failed': { readonly reason: string }
+    /** Identity is loaded and nobody is signed in. */
+    'collaboration/unauthorized': { readonly reason: string }
   }
 }
 

@@ -159,6 +159,7 @@
    render stays static. */
 .railIn .iconButton,
 .railIn .newSession,
+.railIn .account,
 .railIn .panelList,
 .railIn .regionArea {
   animation: rail-in 150ms var(--ds-ease-in-out) backwards;
@@ -413,6 +414,10 @@
   font-weight: 500;
   line-height: 10px;
   white-space: nowrap;
+}
+
+.account {
+  flex: none;
 }
 
 /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
@@ -812,6 +817,7 @@
   .fading > *,
   .railIn .iconButton,
   .railIn .newSession,
+  .railIn .account,
   .railIn .panelList,
   .railIn .footArea,
   .railIn .regionArea {

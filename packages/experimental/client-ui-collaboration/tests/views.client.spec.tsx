@@ -56,6 +56,7 @@ function roster(
     selectedAiId: undefined,
     thinking: false,
     branchIds: [],
+    localAccounts: false,
     selectedHumanId: undefined,
     ...overrides,
   }
@@ -224,6 +225,20 @@ describe('collaboration-room views', () => {
     expect(selectHuman).toHaveBeenCalledWith('bob')
   })
 
+  it('shows the signed-in name instead of the occupant switch', () => {
+    render(<Badge
+      t={t}
+      selectHuman={vi.fn()}
+      useActors={selectRoster({
+        actors: [{ id: 'alice', kind: 'human', name: 'Alice' }],
+        selectedHumanId: 'alice',
+        localAccounts: true,
+      })}
+    /> as never)
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.getByText('Alice')).toBeTruthy()
+  })
+
   it('renders a human room line', () => {
     render(<MessageView
       t={t}
@@ -332,6 +347,7 @@ describe('collaboration-room views', () => {
         thinking: false,
         branchIds: [],
         selectedAiId: undefined,
+        localAccounts: false,
       } as never)}
       useSessions={selectList()}
     /> as never)

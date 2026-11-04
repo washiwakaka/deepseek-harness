@@ -177,6 +177,11 @@ describe('BrowserAuth', () => {
     expect(login.state.headers?.['set-cookie']).toMatch(/; Max-Age=2592000; Path=\/; Expires=.*; HttpOnly; SameSite=Strict$/u)
     expect(login.state.headers?.['set-cookie']).not.toContain('Secure')
     expect(first.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBe(true)
+    expect(first.authenticateBrowser(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toEqual(expect.any(String))
+    expect(first.authenticateApi(request('/', '127.0.0.1:3080', { cookie: login.cookie }))).toBeUndefined()
+    const other = exchange(first)
+    expect(first.authenticateBrowser(request('/', '127.0.0.1:3080', { cookie: other.cookie })))
+      .not.toBe(first.authenticateBrowser(request('/', '127.0.0.1:3080', { cookie: login.cookie })))
     expect(first.isAuthenticated({
       headers: new Headers({ host: '127.0.0.1:3080', cookie: login.cookie }),
     })).toBe(true)
@@ -207,6 +212,23 @@ describe('BrowserAuth', () => {
         'referrer-policy': 'no-referrer',
       },
     })
+  })
+
+  it('still authenticates leftover v1 cookies without a session id', async () => {
+    const store = new RecordCredentials()
+    const auth = await createAuth(store)
+    const { cookie } = exchange(auth)
+    const name = cookie.slice(0, cookie.indexOf('='))
+    const issuedAt = Date.now()
+    const leftover = signedCookie(store, name, {
+      version: 1,
+      authority: '127.0.0.1:3080',
+      issuedAt,
+      expiresAt: issuedAt + 30 * 86_400_000,
+    })
+    expect(auth.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: leftover }))).toBe(true)
+    expect(auth.authenticateBrowser(request('/', '127.0.0.1:3080', { cookie: leftover }))).toBeUndefined()
+    expect(auth.authenticateApi(request('/', '127.0.0.1:3080', { cookie: leftover }))).toBeUndefined()
   })
 
   it('keeps HTTPS port 443 distinct from HTTP port 80 with one signing secret', async () => {

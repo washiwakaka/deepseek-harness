@@ -1,5 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
-import type { PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
+import type { PeerId, PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
 import { describe, expect, it, vi } from 'vitest'
 import type { BrowserAuth } from '../src/browser-auth.ts'
 import { HostConnectionService } from '../src/rpc-host.ts'
@@ -25,6 +26,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface PrincipalMap {
     /** Test-only non-owner caller shared by the access specs. */
     'test-guest': { readonly kind: 'test-guest'; readonly guest: string }
+    /** Overlay browser identity; production merge lives in experimental identity. */
+    'local-identity': { readonly kind: 'local-identity'; readonly browserSessionId: PeerId }
   }
 }
 
@@ -117,6 +120,10 @@ describe('Connection exact Fetch routes', () => {
     }), guest)
     expect(rpc.status).toBe(200)
     expect(peers).toEqual([guest])
+    const local = connection.createPeer({
+      principal: { kind: 'local-identity', browserSessionId: guest.id },
+    })
+    expect((await shared.fetch(new Request('http://host/api/session.export'), local)).status).toBe(403)
     await disposeInterceptor()
     await disposeRoute()
     await disposeFiber()
@@ -161,5 +168,141 @@ describe('Connection in-process Peers', () => {
     expect(lingering).toHaveBeenCalledOnce()
     expect(() => created!.ctx.effect(() => () => {})).toThrow()
     await provider.dispose()
+  })
+})
+
+describe('Connection browser principal factory', () => {
+  it('mints later v3 session Peers with the registered principal', async () => {
+    const ctx = new Context()
+    const sessionId = 'browser-session-1' as PeerId
+    const browserAuth = {
+      authenticateBrowser: () => sessionId,
+      isAuthenticated: () => false,
+      authenticateApi: () => undefined,
+    } as unknown as BrowserAuth
+    const fiber = ctx.plugin((pluginCtx) => {
+      new HostConnectionService(pluginCtx, [], browserAuth)
+    })
+    await fiber.await()
+    const connection = ctx.get('connection') as HostConnectionService
+    const disposeFactory = connection.registerBrowserPrincipal(id => ({
+      kind: 'local-identity',
+      browserSessionId: id,
+    }))
+    const admission = connection.admit({ headers: { host: '127.0.0.1' } })
+    expect('peer' in admission && admission.peer.principal).toEqual({
+      kind: 'local-identity',
+      browserSessionId: sessionId,
+    })
+    expect('peer' in admission && admission.peer.id).toBe(sessionId)
+    disposeFactory()
+    await fiber.dispose()
+  })
+
+  it('remints leftover v1 cookies and owner session Peers with the factory', async () => {
+    const ctx = new Context()
+    const sessionId = 'browser-session-2' as PeerId
+    let leftover = false
+    const browserAuth = {
+      authenticateBrowser: () => leftover ? undefined : sessionId,
+      isAuthenticated: () => leftover,
+      authenticateApi: () => undefined,
+    } as unknown as BrowserAuth
+    const fiber = ctx.plugin((pluginCtx) => {
+      new HostConnectionService(pluginCtx, [], browserAuth)
+    })
+    await fiber.await()
+    const connection = ctx.get('connection') as HostConnectionService
+    const owned = connection.admit({ headers: { host: '127.0.0.1' } })
+    expect('peer' in owned && owned.peer.principal).toEqual({ kind: 'owner' })
+    const disposeFactory = connection.registerBrowserPrincipal(id => ({
+      kind: 'local-identity',
+      browserSessionId: id,
+    }))
+    const reminted = connection.admit({ headers: { host: '127.0.0.1' } })
+    expect('peer' in reminted && reminted.peer.principal).toEqual({
+      kind: 'local-identity',
+      browserSessionId: sessionId,
+    })
+    leftover = true
+    const firstV1 = connection.admit({ headers: { host: '127.0.0.1' } })
+    const secondV1 = connection.admit({ headers: { host: '127.0.0.1' } })
+    expect('peer' in firstV1 && firstV1.peer.principal.kind).toBe('local-identity')
+    expect('peer' in firstV1 && 'peer' in secondV1 && firstV1.peer).toBe(secondV1.peer)
+    expect('peer' in firstV1 && firstV1.peer).not.toBe(connection.browserPeer)
+    disposeFactory()
+    await fiber.dispose()
+  })
+
+  it('mints API /connect Peers with the factory', async () => {
+    const ctx = new Context()
+    let apiId: PeerId | undefined
+    const browserAuth = {
+      authenticateBrowser: () => undefined,
+      isAuthenticated: () => false,
+      authenticateApi: () => apiId,
+      authorizeConnect: (
+        _request: unknown,
+        _response: unknown,
+        _secure: boolean,
+        publish: (interactions: 'none') => PeerId,
+      ) => {
+        apiId = publish('none')
+      },
+    } as unknown as BrowserAuth
+    const fiber = ctx.plugin((pluginCtx) => {
+      new HostConnectionService(pluginCtx, [], browserAuth)
+    })
+    await fiber.await()
+    const connection = ctx.get('connection') as HostConnectionService
+    connection.registerBrowserPrincipal(id => ({
+      kind: 'local-identity',
+      browserSessionId: id,
+    }))
+    connection.authorizeConnect(
+      { headers: { host: '127.0.0.1' } } as never,
+      { writeHead() {}, end() {} } as never,
+    )
+    const admission = connection.admit({ headers: { host: '127.0.0.1' } })
+    expect(apiId).toBeDefined()
+    expect('peer' in admission && admission.peer.id).toBe(apiId)
+    expect('peer' in admission && admission.peer.principal).toEqual({
+      kind: 'local-identity',
+      browserSessionId: apiId,
+    })
+    await fiber.dispose()
+  })
+})
+
+describe('Connection exact Fetch local-identity ACL', () => {
+  it('allows export only when remoteAccess grants session/page on sessionId', async () => {
+    const ctx = new Context()
+    const fiber = ctx.plugin((pluginCtx) => {
+      new HostConnectionService(pluginCtx, [], {} as BrowserAuth)
+    })
+    await fiber.await()
+    const connection = ctx.get('connection') as HostConnectionService
+    const allowed = new Set(['session-1'])
+    ctx.provide('remoteAccess', {
+      decide: ({ resources }: { resources: readonly { readonly id?: string }[] }) => ({
+        kind: resources.some(resource => resource.id !== undefined && allowed.has(resource.id)) ? 'allow' : 'deny',
+        reason: 'fixture',
+      }),
+    })
+    const dispose = connection.fetch.register({
+      path: '/api/session.export',
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: async () => new Response('ok'),
+    })
+    const local = connection.createPeer({
+      principal: { kind: 'local-identity', browserSessionId: 'peer-1' as PeerId },
+    })
+    const shared = connection.createSharedFetchHandler('/api')
+    expect((await shared.fetch(new Request('http://host/api/session.export?sessionId=session-1'), local)).status).toBe(200)
+    expect((await shared.fetch(new Request('http://host/api/session.export?sessionId=session-2'), local)).status).toBe(403)
+    expect((await shared.fetch(new Request('http://host/api/session.export'), local)).status).toBe(403)
+    await dispose()
+    await fiber.dispose()
   })
 })

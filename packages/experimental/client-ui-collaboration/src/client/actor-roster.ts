@@ -9,6 +9,8 @@ export interface ActorRosterSnapshot {
   readonly mentionModels: readonly CollaborationActorRow[]
   readonly selectedHumanId: string | undefined
   readonly selectedAiId: string | undefined
+  /** True when the Host posts as a signed-in local account. */
+  readonly localAccounts: boolean
   /** True while a room post or send-with-room Remote call is in flight. */
   readonly thinking: boolean
   /** Branch Session ids opened from a mention on this Client. */
@@ -38,11 +40,13 @@ export function occupantName(snapshot: ActorRosterSnapshot, actorId: string): st
 function selectedHumanAmong(
   selectedHumanId: string | undefined,
   actors: readonly CollaborationActorRow[],
+  localAccounts: boolean,
 ): string | undefined {
   if (selectedHumanId !== undefined
     && actors.some(actor => actor.id === selectedHumanId && actor.kind === 'human')) {
     return selectedHumanId
   }
+  if (localAccounts) return undefined
   return firstHumanId(actors)
 }
 
@@ -68,6 +72,7 @@ export class ActorRosterStore {
     mentionModels: [],
     selectedHumanId: undefined,
     selectedAiId: undefined,
+    localAccounts: false,
     thinking: false,
     branchIds: [],
   }
@@ -96,7 +101,11 @@ export class ActorRosterStore {
     this.snapshot = {
       ...this.snapshot,
       actors: next,
-      selectedHumanId: selectedHumanAmong(this.snapshot.selectedHumanId, next),
+      selectedHumanId: selectedHumanAmong(
+        this.snapshot.selectedHumanId,
+        next,
+        this.snapshot.localAccounts,
+      ),
     }
     this.notify()
   }
@@ -115,7 +124,25 @@ export class ActorRosterStore {
   }
 
   /**
-   * Select a human author for test posts. Non-human ids are ignored.
+   * Whether the Host uses signed-in local accounts instead of the Config switch.
+   * @param enabled - true when identity session drives the posting human.
+   */
+  setLocalAccounts(enabled: boolean): void {
+    if (this.snapshot.localAccounts === enabled) return
+    this.snapshot = {
+      ...this.snapshot,
+      localAccounts: enabled,
+      selectedHumanId: selectedHumanAmong(
+        this.snapshot.selectedHumanId,
+        this.snapshot.actors,
+        enabled,
+      ),
+    }
+    this.notify()
+  }
+
+  /**
+   * Select a human author for room posts. Non-human ids are ignored.
    * @param id - Host occupant id.
    */
   selectHuman(id: string): void {
@@ -126,6 +153,22 @@ export class ActorRosterStore {
       selectedHumanId: id,
       selectedAiId: undefined,
       mentionModels: [],
+      branchIds: [],
+    }
+    this.notify()
+  }
+
+  /**
+   * Clear the signed-in human. Roster rows stay.
+   */
+  clearHuman(): void {
+    if (this.snapshot.selectedHumanId === undefined) return
+    this.snapshot = {
+      ...this.snapshot,
+      selectedHumanId: undefined,
+      selectedAiId: undefined,
+      mentionModels: [],
+      branchIds: [],
     }
     this.notify()
   }

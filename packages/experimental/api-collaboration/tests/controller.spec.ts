@@ -10,6 +10,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import CollaborationController from '../src/index.ts'
 
 const contexts: Context[] = []
@@ -365,5 +366,29 @@ describe('collaboration Remote', () => {
     const abort = new AbortController()
     abort.abort()
     await expect(api.sendWithRoom(room, 'hello', 'alice', abort.signal)).rejects.toThrow()
+  })
+
+  it('maps unsigned identity posts onto unauthorized', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    new MemoryCredentials(ctx)
+    await mountAgentLoopTestDependencies(ctx)
+    const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-api-collab-accounts-'))
+    roots.push(storageRoot)
+    await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
+    await ctx.plugin(AgentLoop, { agents: [] })
+    const { default: IdentityService } = await import('@deepseek-ai/dsh-experimental-identity')
+    await ctx.plugin(IdentityService, {})
+    await ctx.plugin(CollaborationService, { actors: [] })
+    ctx.llm.registerAdapter(['mock'], new MockAdapter([]))
+    const accounts = new CollaborationController(ctx)
+    const abort = new AbortController()
+    const room = await ctx.agentLoop.create(SessionId('room'), { provider: 'mock', model: 'mock' })
+    try {
+      await accounts.postMessage(room, { actorId: 'alice', text: 'hello' }, abort.signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/unauthorized' })
+    }
   })
 })

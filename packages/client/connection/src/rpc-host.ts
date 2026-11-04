@@ -1,7 +1,10 @@
 /** Host registry and HTTP adapter for generic Connection RPC channels. */
 
+import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { PeerId, PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConnectionInteractions } from './connect-protocol.ts'
 import {
@@ -68,13 +71,16 @@ declare module '@deepseek-ai/cordis' {
 
 /** Host Connection service whose channel registrations belong to the caller fiber. */
 export class HostConnectionService extends Service implements HostConnectionHandle {
-  /** The Peer every authenticated browser connection shares. */
+  /** Owner Peer used for in-process index render and leftover v1 browser cookies. */
   readonly browserPeer: PeerScope
   private readonly peers = new Map<PeerId, PeerRecord>()
+  private readonly browserSessions = new Map<PeerId, Peer>()
   private readonly owner: Context
   private disposed = false
   private readonly interceptors = new Map<string, ConnectionRpcInterceptor>()
   private readonly fetchRoutes = new Map<string, RegisteredFetchRoute>()
+  private browserPrincipal: ((id: PeerId) => Principal) | undefined
+  private readonly leftoverV1PeerId = randomUUID() as PeerId
 
   readonly allowsRemoteAuthorities: boolean
 
@@ -94,7 +100,12 @@ export class HostConnectionService extends Service implements HostConnectionHand
     this.browserPeer = new Peer(ctx, { principal: { kind: 'owner' } })
     ctx.effect(() => async () => {
       this.disposed = true
-      const peers = [this.browserPeer, ...Array.from(this.peers.values(), record => record.peer)]
+      const peers = [
+        this.browserPeer,
+        ...this.browserSessions.values(),
+        ...Array.from(this.peers.values(), record => record.peer),
+      ]
+      this.browserSessions.clear()
       this.peers.clear()
       await Promise.all(peers.map(peer => peer.dispose()))
     }, 'client-connection: Peer scopes')
@@ -125,12 +136,17 @@ export class HostConnectionService extends Service implements HostConnectionHand
     return 'rejection' in admission ? admission.rejection : undefined
   }
 
-  /** Browser requests share an owner Peer; API HTTP does not depend on an attached socket. */
+  /** Each v3 browser cookie maps to one session Peer; leftover v1 cookies share one factory Peer or `browserPeer`. */
   admit(request: ConnectionTrustRequest): PeerAdmission {
     if (!this.isTrusted(request)) return { rejection: 403 }
     if (this.disposed) return { rejection: 401 }
     const secure = this.owner.get('webServer')?.protocol === 'https:'
-    if (this.browserAuth.isAuthenticated(request, secure)) return { peer: this.browserPeer }
+    const browserId = this.browserAuth.authenticateBrowser(request, secure)
+    if (browserId !== undefined) return { peer: this.liveBrowserSession(browserId) }
+    if (this.browserAuth.isAuthenticated(request, secure)) {
+      if (this.browserPrincipal !== undefined) return { peer: this.liveBrowserSession(this.leftoverV1PeerId) }
+      return { peer: this.browserPeer }
+    }
     const id = this.browserAuth.authenticateApi(request, secure)
     const record = id === undefined ? undefined : this.peers.get(id)
     return record === undefined ? { rejection: 401 } : { peer: record.peer }
@@ -139,6 +155,20 @@ export class HostConnectionService extends Service implements HostConnectionHand
   /** Create one in-process Peer owned by the Context that read this service. */
   createPeer(options: { readonly principal: Principal; readonly interactions?: ConnectionInteractions }): PeerScope {
     return new Peer(this.ctx, options)
+  }
+
+  /**
+   * Install the principal factory for later v3 browser-session Peers.
+   * @param factory - maps the cookie Peer id to a principal.
+   * @returns disposer owned by the Context that read `ctx.connection`.
+   */
+  registerBrowserPrincipal(factory: (id: PeerId) => Principal): () => void {
+    return this.ctx.effect(() => {
+      this.browserPrincipal = factory
+      return () => {
+        if (this.browserPrincipal === factory) this.browserPrincipal = undefined
+      }
+    }, 'client-connection: browser principal factory')
   }
 
   /** Claim API socket ownership synchronously; callers release on termination or failed upgrade. */
@@ -161,13 +191,44 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
   }
 
+  /**
+   * Whether a local-identity exact Fetch may read this URL's `sessionId`.
+   * @param request - exact-route Fetch.
+   * @param peer - admitted local-identity caller.
+   */
+  private allowsExactFetch(request: Request, peer: PeerScope): boolean {
+    const access = this.owner.get('remoteAccess')
+    const sessionId = new URL(request.url).searchParams.get('sessionId')
+    if (access === undefined || sessionId === null || sessionId.length === 0) return false
+    return access.decide({
+      principal: peer.principal,
+      action: 'session/page',
+      resources: [{ kind: 'session', id: SessionId(sessionId) }],
+    }).kind === 'allow'
+  }
+
   private isTrusted(request: ConnectionTrustRequest): boolean {
     const carrier = this.owner.get('webServer')
     return isTrustedApiRequest(request, this.trustedHosts, carrier?.host, carrier?.protocol ?? 'http:')
   }
 
+  private liveBrowserSession(id: PeerId): Peer {
+    const existing = this.browserSessions.get(id)
+    if (existing !== undefined) {
+      if (this.browserPrincipal === undefined || existing.principal.kind !== 'owner') return existing
+      void existing.dispose()
+      this.browserSessions.delete(id)
+    }
+    const principal = this.browserPrincipal?.(id) ?? { kind: 'owner' }
+    const peer = new Peer(this.owner, { principal, id })
+    this.browserSessions.set(id, peer)
+    return peer
+  }
+
   private publishPeer(interactions: ConnectionInteractions): PeerId {
-    const peer = new Peer(this.owner, { principal: { kind: 'owner' }, interactions })
+    const id = randomUUID() as PeerId
+    const principal = this.browserPrincipal?.(id) ?? { kind: 'owner' }
+    const peer = new Peer(this.owner, { principal, interactions, id })
     this.peers.set(peer.id, { peer, ownsSocket: false })
     return peer.id
   }
@@ -216,9 +277,16 @@ export class HostConnectionService extends Service implements HostConnectionHand
         const pathname = new URL(request.url).pathname
         const route = this.fetchRoutes.get(pathname)
         if (route?.methods.has(request.method) === true) {
-          // Exact routes bypass Gateway access checks, so only the owner reaches them.
-          // oxlint-disable-next-line typescript/no-unnecessary-condition -- other packages merge non-owner kinds into PrincipalMap.
-          if (peer.principal.kind !== 'owner') return Promise.resolve(new Response('forbidden', { status: 403 }))
+          // Exact routes bypass Gateway method checks. Owner always reaches them.
+          // local-identity needs `session/page` on the query `sessionId`.
+          const kind = peer.principal.kind as string
+          if (kind === 'owner') return route.fetch(request)
+          if (kind !== 'local-identity') {
+            return Promise.resolve(new Response('forbidden', { status: 403 }))
+          }
+          if (!this.allowsExactFetch(request, peer)) {
+            return Promise.resolve(new Response('forbidden', { status: 403 }))
+          }
           return route.fetch(request)
         }
         const endpoint = endpointFromPath(channel, pathname)

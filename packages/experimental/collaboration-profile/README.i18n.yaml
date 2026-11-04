@@ -3,35 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/experimental/collaboration-profile/README.md
 /:
-  en: 8e3a0f6567aeaf47
-  zh: 67c56e5903a33386
+  en: 65ed12307f9570dd
+  zh: cd9e7133b4147b80
 /deepseek-ai-dsh-experimental-collaboration-profile:
   en: a4a420b0ad3e649c
   zh: af113212806ddeca
 /deepseek-ai-dsh-experimental-collaboration-profile/summary:
-  en: 759c818b994aa2df
-  zh: 95323caa2294f70e
+  en: cad834a8ca391a6c
+  zh: b59cc1bc384b72ac
 /deepseek-ai-dsh-experimental-collaboration-profile/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-experimental-collaboration-profile/use-this-package:
-  en: 2fb415f0f9436ce9
-  zh: 89b9895a2734e5b0
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-experimental-collaboration-profile/use-this-package/install-into-a-profile:
+  en: d6d3a5dbab1c63f7
+  zh: ad143ccf3479cd50
 /deepseek-ai-dsh-experimental-collaboration-profile/understand-the-implementation:
-  en: ca0da6230eebdb6e
-  zh: a42904c5b1be7c58
+  en: 7c02475521c84cdd
+  zh: 3c778a3511023f9d
 /deepseek-ai-dsh-experimental-collaboration-profile/further-exploration:
-  en: cff8006870ad8a6a
-  zh: 9145127d8472908a
+  en: 8118db200d85f213
+  zh: c775cefb693e4e53
 /deepseek-ai-dsh-experimental-collaboration-profile/model-experience:
-  en: a10d578767405e34
-  zh: 0584f3a83112da1f
+  en: d6857d2ec9beb528
+  zh: 0240db661e1e75e3
 /deepseek-ai-dsh-experimental-collaboration-profile/model-experience/kv-cache-effect:
   en: 60835eca1cee4e0e
   zh: eff655debaeb1044
 /deepseek-ai-dsh-experimental-collaboration-profile/known-limitations-and-deferred-work:
-  en: 1847f6339dda0b00
-  zh: df805083a75f81a4
+  en: 54b4e1bbde7937cf
+  zh: fb648a29b0990b25
 /deepseek-ai-dsh-experimental-collaboration-profile/known-limitations-and-deferred-work/dev-note:
-  en: 6b25dfcf8410e7fc
-  zh: 233ef15c09223faa
+  en: 3470538d1ebc75bf
+  zh: bdf171b1dc97ba37

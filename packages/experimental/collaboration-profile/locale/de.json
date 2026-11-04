@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Kollaborationsraum-Overlay",
-    "description": "Lädt die Host- und Remote-Plugins des Raums mit einer Config-Teilnehmerliste."
+    "title": "Kollaborationsraum",
+    "description": "Lokal anmelden, unabhängigen Geschäftslinien beitreten und einen Raum teilen, der Modelle per @ aufruft."
   }
 }

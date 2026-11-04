@@ -41,7 +41,7 @@ async function setup() {
 
 describe('collaboration postMessage', () => {
   it('rejects invalid Config at construction', () => {
-    expect(() => new CollaborationService(new Context(), { actors: [] })).toThrow(/at least one occupant/)
+    expect(() => new CollaborationService(new Context(), { actors: [] })).not.toThrow()
     expect(() => new CollaborationService(new Context(), {
       actors: [{ id: 'a', kind: 'ai', name: 'A' }],
     })).toThrow(/needs provider and model/)

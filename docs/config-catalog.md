@@ -1084,14 +1084,15 @@ export interface Config {
 ## `@deepseek-ai/dsh-experimental-collaboration`
 
 - `inject`: `agents` · `sessions` · `sessionPersistence` · `sessionProjections` · `llm`
-- `source`: [`packages/experimental/collaboration/src/types.ts:55`](../packages/experimental/collaboration/src/types.ts)
+- `source`: [`packages/experimental/collaboration/src/types.ts:60`](../packages/experimental/collaboration/src/types.ts)
 
 ```ts config-catalog
 /** Collaboration-service deployment limits and occupant roster. */
 export interface Config {
   /**
    * Human authors and optional Config AI occupants.
-   * Omit to use Alice–James overlay humans; Clients list `@` models through `listMentionModels`.
+   * Omit to use Alice–James overlay humans. Empty is valid when `ctx.identity`
+   * supplies humans. Clients list `@` models through `listMentionModels`.
    */
   readonly actors?: ActorConfig[]
   /** Maximum UTF-8 bytes in one room message. */
@@ -1113,6 +1114,11 @@ export interface ActorConfig {
    * Humans only.
    */
   readonly providers?: string[]
+  /**
+   * Settings mention routes this human may `@`. Empty means every advertised model
+   * on the allowed providers. Humans only.
+   */
+  readonly models?: string[]
   /** Required when {@link kind} is `ai`. */
   readonly provider?: string
   /** Required when {@link kind} is `ai`. */
@@ -1241,6 +1247,32 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-forge-session -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-identity -->
+<a id="deepseek-aidsh-experimental-identity"></a>
+
+## `@deepseek-ai/dsh-experimental-identity`
+
+- `source`: [`packages/experimental/identity/src/types.ts:68`](../packages/experimental/identity/src/types.ts)
+
+```ts config-catalog
+/** Deployment-varying identity plugin config. */
+export interface Config {
+  /** Seed business lines written on first store create when none are stored yet. */
+  readonly lines?: readonly IdentityLineView[]
+  /** Usernames stored as admin when they register. A signed-in admin may also promote later accounts. */
+  readonly admins?: readonly string[]
+}
+
+/** One Host-wide business line. Membership and models do not leak across lines. */
+export interface IdentityLineView {
+  /** Username-shaped line id. */
+  readonly id: string
+  /** Display name. */
+  readonly name: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-identity -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-inspector -->
 <a id="deepseek-aidsh-experimental-inspector"></a>
@@ -5013,9 +5045,11 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-deepseek-llm-api-extensions` | — | [`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts) |
 | `@deepseek-ai/dsh-deliverable-file-references` | `systemPrompt` | [`packages/deliverables/deliverable-file-references/src/index.ts`](../packages/deliverables/deliverable-file-references/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-api-collaboration` | `collaboration` · `typert` | [`packages/experimental/api-collaboration/src/index.ts`](../packages/experimental/api-collaboration/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-api-identity` | `identity` · `typert` | [`packages/experimental/api-identity/src/index.ts`](../packages/experimental/api-identity/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-auto-review` | `approval` · `llm` · `permissionPresets` · `sessions` · `tools` · `workingDirectory` | [`packages/experimental/auto-review/src/index.ts`](../packages/experimental/auto-review/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-claude-code-mods` | — | [`packages/experimental/client-ui-claude-code-mods/src/index.ts`](../packages/experimental/client-ui-claude-code-mods/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-collaboration` | — | [`packages/experimental/client-ui-collaboration/src/index.ts`](../packages/experimental/client-ui-collaboration/src/index.ts) |
+| `@deepseek-ai/dsh-experimental-client-ui-identity` | — | [`packages/experimental/client-ui-identity/src/index.ts`](../packages/experimental/client-ui-identity/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-stats` | — | [`packages/experimental/client-ui-stats/src/index.ts`](../packages/experimental/client-ui-stats/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-client-ui-voice-input` | — | [`packages/experimental/client-ui-voice-input/src/index.ts`](../packages/experimental/client-ui-voice-input/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-computer-use-cua-driver-native` | `computerUse` · `tools` · `systemPrompt` | [`packages/experimental/computer-use-cua-driver-native/src/index.ts`](../packages/experimental/computer-use-cua-driver-native/src/index.ts) |

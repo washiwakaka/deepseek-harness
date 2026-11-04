@@ -19,6 +19,7 @@ describe('ActorRosterStore', () => {
       selectedAiId: undefined,
       thinking: false,
       branchIds: [],
+      localAccounts: false,
     })
     store.set([modelA, alice, bob])
     expect(store.getSnapshot()).toEqual({
@@ -28,6 +29,7 @@ describe('ActorRosterStore', () => {
       selectedAiId: undefined,
       thinking: false,
       branchIds: [],
+      localAccounts: false,
     })
     expect(seen).toEqual(['alice'])
     unsubscribe()
@@ -97,5 +99,19 @@ describe('ActorRosterStore', () => {
     store.addBranch('child-1')
     store.addBranch('child-1')
     expect(store.getSnapshot().branchIds).toEqual(['child-1'])
+  })
+
+  it('does not auto-select a human when local accounts are on', () => {
+    const store = new ActorRosterStore()
+    store.setLocalAccounts(true)
+    store.set([alice, bob])
+    expect(store.getSnapshot()).toMatchObject({
+      localAccounts: true,
+      selectedHumanId: undefined,
+    })
+    store.selectHuman('alice')
+    expect(store.getSnapshot().selectedHumanId).toBe('alice')
+    store.clearHuman()
+    expect(store.getSnapshot().selectedHumanId).toBeUndefined()
   })
 })
