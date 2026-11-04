@@ -90,7 +90,7 @@ async function bench() {
     children: {
       'sidebar.account': { kind: 'single', scope: 'root' },
     },
-  }, () => null as never)
+  } as never, () => null)
   return { ctx, unmount }
 }
 
@@ -157,7 +157,7 @@ describe('identity browser plugin', () => {
     ctx.slots.register({
       name: 'root',
       children: { 'sidebar.account': { kind: 'single', scope: 'root' } },
-    }, () => null as never)
+    } as never, () => null)
     const dispose = await apply(ctx)
     await dispose()
   })
@@ -271,7 +271,7 @@ describe('identity browser plugin', () => {
     ctx.slots.register({
       name: 'root',
       children: { 'sidebar.account': { kind: 'single', scope: 'root' } },
-    }, () => null as never)
+    } as never, () => null)
     await expect(mountIdentityUi(ctx, REMOTE)).rejects.toThrow('locale')
     expect(unmount).toHaveBeenCalled()
   })

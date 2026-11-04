@@ -16,7 +16,10 @@ async function setup(config: Config = {}) {
   const ctx = new Context()
   contexts.push(ctx)
   new MemoryCredentials(ctx)
-  await ctx.plugin(IdentityService, config)
+  const pluginConfig: { lines?: { id: string; name: string }[]; admins?: string[] } = {}
+  if (config.lines !== undefined) pluginConfig.lines = config.lines.map(line => ({ id: line.id, name: line.name }))
+  if (config.admins !== undefined) pluginConfig.admins = [...config.admins]
+  await ctx.plugin(IdentityService, pluginConfig)
   const api = new IdentityController(ctx)
   return { api, ctx }
 }

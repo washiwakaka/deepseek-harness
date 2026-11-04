@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
+import type { RemoteAccessCondition } from '@deepseek-ai/dsh-api-remote-access/types'
 import { createLocalIdentityAccessPolicy } from '../src/access-policy.ts'
 import type { RoomOccupancy } from '../src/access-policy.ts'
 
@@ -45,7 +46,14 @@ function allows(
     if (resource.kind === 'session' && binding.resource.kind === 'session' && binding.resource.id !== resource.id) continue
     if (!binding.role.actions.includes(action)) continue
     if (binding.condition === undefined) return true
-    return binding.condition({ action, resource: binding.resource }).kind === 'allow'
+    if (resource.kind === 'global' && binding.resource.kind === 'global') {
+      const condition = binding.condition as RemoteAccessCondition<'global'>
+      return condition({ action, resource: binding.resource }).kind === 'allow'
+    }
+    if (resource.kind === 'session' && binding.resource.kind === 'session') {
+      const condition = binding.condition as RemoteAccessCondition<'session'>
+      return condition({ action, resource: binding.resource }).kind === 'allow'
+    }
   }
   return false
 }

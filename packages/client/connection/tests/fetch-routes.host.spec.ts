@@ -26,8 +26,6 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface PrincipalMap {
     /** Test-only non-owner caller shared by the access specs. */
     'test-guest': { readonly kind: 'test-guest'; readonly guest: string }
-    /** Overlay browser identity; production merge lives in experimental identity. */
-    'local-identity': { readonly kind: 'local-identity'; readonly browserSessionId: PeerId }
   }
 }
 
@@ -228,7 +226,8 @@ describe('Connection browser principal factory', () => {
     const firstV1 = connection.admit({ headers: { host: '127.0.0.1' } })
     const secondV1 = connection.admit({ headers: { host: '127.0.0.1' } })
     expect('peer' in firstV1 && firstV1.peer.principal.kind).toBe('local-identity')
-    expect('peer' in firstV1 && 'peer' in secondV1 && firstV1.peer).toBe(secondV1.peer)
+    expect('peer' in secondV1).toBe(true)
+    if ('peer' in firstV1 && 'peer' in secondV1) expect(firstV1.peer).toBe(secondV1.peer)
     expect('peer' in firstV1 && firstV1.peer).not.toBe(connection.browserPeer)
     disposeFactory()
     await fiber.dispose()
