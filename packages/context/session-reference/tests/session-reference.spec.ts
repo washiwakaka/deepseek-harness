@@ -853,6 +853,24 @@ describe('session reference discovery and preparation', () => {
     })])
   })
 
+  it('filters Remote candidates through remoteAccess when the service is present', async () => {
+    const ctx = await harness()
+    const target = ctx.sessions.create(SessionId('target'), { meta: { cwd: '/same', createdAt: 10 } })
+    ctx.provide('remoteAccess', {
+      allows(resource: { kind: string; id: string }) {
+        return resource.kind === 'session' && resource.id === 'allowed'
+      },
+    })
+    vi.spyOn(ctx.sessionReferenceResolver, 'listCandidates').mockResolvedValueOnce([
+      { sessionId: SessionId('allowed'), label: 'Allowed', sameWorkspace: true, createdAt: 10 },
+      { sessionId: SessionId('denied'), label: 'Denied', sameWorkspace: true, createdAt: 20 },
+    ])
+    const candidates = await ctx.sessionReferenceResolver.remoteExportCandidates(
+      fakeAgent(target), '', new AbortController().signal,
+    )
+    expect(candidates.map(candidate => candidate.sessionId)).toEqual([SessionId('allowed')])
+  })
+
   it('prepares direct mentions at pre-step and keeps ordinary and plugin messages unchanged', async () => {
     const ctx = await harness()
     const target = ctx.sessions.create(SessionId('target'))

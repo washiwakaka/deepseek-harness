@@ -285,7 +285,13 @@ export class SessionReferenceResolver extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<SessionReferenceMentionCandidate[]> {
     const candidates = await this.listCandidates(agent, query, this.config.candidateLimit, signal)
-    return candidates.map(candidate => ({
+    const remoteAccess = this.ctx.get('remoteAccess') as {
+      allows(resource: { kind: 'session'; id: string }): boolean
+    } | undefined
+    const visible = remoteAccess === undefined
+      ? candidates
+      : candidates.filter(candidate => remoteAccess.allows({ kind: 'session', id: candidate.sessionId }))
+    return visible.map(candidate => ({
       ...candidate,
       mention: formatSessionReferenceMention({
         sessionId: candidate.sessionId,
