@@ -25,7 +25,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { DynamicCordisLivePackage } from './runtime.ts'
 import { DynamicCordisPackageRunner } from './runtime.ts'
 import { CordisRunOrchestrator } from './orchestrator.ts'
-import { ClientCordisInspectRegistry, provideClientCordisInspect } from './inspect-registry.ts'
+import { ClientCordisInspectRegistry, isRemoteAccessDeniedCode, provideClientCordisInspect } from './inspect-registry.ts'
 import { clientInspectProviders } from './providers.ts'
 import type { CordisRunActivity, CordisRunFailure, CordisUserRunRequest } from './orchestrator.ts'
 import type { CordisObservable, DynamicCordisRenderFailure } from './runtime.ts'
@@ -189,7 +189,9 @@ export function apply(ctx: Context): void {
   const inspect = new ClientCordisInspectRegistry({
     sync: async (providers) => {
       const answered = await ctx.remote.dynamicCordisRunner.syncInspectManifest(providers)
-      if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
+      if (answered.ok) return
+      if (isRemoteAccessDeniedCode(answered.error.code)) return
+      throw new Error(`${answered.error.code}: ${answered.error.message}`)
     },
     resolve: async (agentId, requestId, resolution) => {
       const answered = await ctx.remote.dynamicCordisRunner.resolveInspectQuery(agentId, requestId, resolution)

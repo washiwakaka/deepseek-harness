@@ -29,6 +29,9 @@ export interface IdentityMembership {
   readonly modelIds: readonly string[]
 }
 
+/** One toggleable Host feature group on an account. */
+export type IdentityCapability = 'workspace' | 'terminal' | 'mcp' | 'cordis'
+
 /** Signed-in or listed account, without secrets. */
 export interface IdentityAccountView {
   readonly id: string
@@ -36,6 +39,8 @@ export interface IdentityAccountView {
   readonly admin: boolean
   /** True when Config `admins` named this username; it cannot be demoted. */
   readonly seedAdmin: boolean
+  /** Host feature groups granted to this account. */
+  readonly capabilities?: readonly IdentityCapability[]
   readonly activeLineId: string | null
   readonly memberships: readonly IdentityMembership[]
 }

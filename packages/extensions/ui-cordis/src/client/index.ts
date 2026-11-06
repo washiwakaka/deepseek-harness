@@ -56,8 +56,9 @@ export function apply(ctx: ClientContext): void {
     },
     inventory: async () => {
       const answered = await ctx.remote.dynamicCordisRunner.inventory()
-      if (!answered.ok) throw new Error(`${answered.error.code}: ${answered.error.message}`)
-      return answered.value
+      if (answered.ok) return answered.value
+      if (isRemoteAccessDeniedCode(answered.error.code)) return []
+      throw new Error(`${answered.error.code}: ${answered.error.message}`)
     },
   }
   const inventory = createCordisInventory(port, (error) => {
@@ -145,4 +146,9 @@ export function apply(ctx: ClientContext): void {
   })
 
   inventory.refresh()
+}
+
+/** Gateway ACL code. Client endpoint unions omit it, so compare as a string. */
+function isRemoteAccessDeniedCode(code: string): boolean {
+  return code === 'remote-access/denied'
 }

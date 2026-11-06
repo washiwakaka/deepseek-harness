@@ -82,6 +82,7 @@ export class ClientCordisInspectRegistry {
       this.syncChain = this.syncChain.then(async () => {
         await this.host.sync(manifests)
       }).catch((error: unknown) => {
+        if (isRemoteAccessDenied(error)) return
         console.error('[cordis-client-runner] syncing inspect providers failed:', error)
       })
     })
@@ -147,4 +148,22 @@ declare module '@deepseek-ai/cordis' {
  */
 export function provideClientCordisInspect(ctx: Context, registry: ClientCordisInspectRegistry): void {
   ctx.provide('cordisInspect', registry)
+}
+
+/** Whether a Host Remote refusal is ACL, not a transport failure. */
+function isRemoteAccessDenied(error: unknown): boolean {
+  if (error instanceof Error) {
+    return typeof error.message === 'string' && error.message.startsWith('remote-access/denied:')
+  }
+  return typeof error === 'object' && error !== null && 'code' in error
+    && isRemoteAccessDeniedCode(String(error.code))
+}
+
+/**
+ * Gateway ACL code. Client endpoint unions omit it, so compare as a string.
+ * @param code - Remote error code from the generated Client union.
+ * @returns true when the code is `remote-access/denied`.
+ */
+export function isRemoteAccessDeniedCode(code: string): boolean {
+  return code === 'remote-access/denied'
 }

@@ -49,7 +49,7 @@ function send(agent: Awaited<ReturnType<typeof setup>>['room'], text: string): v
 }
 
 describe('room Agent context admit', () => {
-  it('does not inject on an ordinary Send', async () => {
+  it('automatically prepends unmentioned room lines on an ordinary Send', async () => {
     const { ctx, room } = await setup([textResponse('ok')])
     await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
@@ -58,8 +58,14 @@ describe('room Agent context admit', () => {
     send(room, 'hello')
     await room.whenIdle()
     const users = room.session.deriveMessages().filter(message => message.role === 'user')
-    expect(users).toHaveLength(1)
-    expect(users[0]?.source.kind).toBe('user')
+    expect(users).toHaveLength(2)
+    expect(users[0]?.source.kind).toBe('collaboration-room-context')
+    expect(users[0]?.content).toEqual([{
+      type: 'text',
+      text: `${COLLABORATION_ROOM_CONTEXT_INSTRUCTION}\n\n[Alice] hello room`,
+    }])
+    expect(users[1]?.source.kind).toBe('user')
+    expect(users[1]?.content).toEqual([{ type: 'text', text: 'hello' }])
   })
 
   it('logs unmentioned room lines before the next Send', async () => {

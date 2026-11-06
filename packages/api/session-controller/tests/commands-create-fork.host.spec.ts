@@ -66,6 +66,12 @@ describe('Session creation failures', () => {
     const controller = new SessionCommandController(ctx, controllerAgents(ctx, { createSession }), '/default-workspace')
 
     const created = await controller.create({})
+    const withPeer = new SessionCommandController(
+      ctx.extend({ invocation: { peer: { id: 'peer-1' } } as never }),
+      controllerAgents(ctx, { createSession: publishedSession(ctx, SessionId('session-minted-2')) }),
+      '/default-workspace',
+    )
+    await withPeer.create({})
 
     expect(created).toEqual({ sessionId: 'session-minted' })
     expect(createSession).toHaveBeenCalledOnce()
@@ -292,6 +298,12 @@ describe('Session fork failures', () => {
     const options = create.mock.calls[0]?.[0]
     if (options === undefined) throw new Error('Agent creation was not attempted')
     expect(options.meta?.agentPreset).toBe('minimal')
+    const withPeer = new SessionCommandController(
+      ctx.extend({ invocation: { peer: { id: 'peer-1' } } as never }),
+      controllerAgents(ctx),
+      '/default',
+    )
+    await withPeer.fork({ sessionId: source.id })
     await ctx.fiber.dispose()
   })
 })

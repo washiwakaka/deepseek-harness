@@ -3,7 +3,7 @@ import {
   Button, Checkbox, IconUserOutlineRegular, Input, Modal, SegmentedTabs,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { IdentityAccountView } from '@deepseek-ai/dsh-experimental-api-identity/types'
+import type { IdentityAccountView, IdentityCapability } from '@deepseek-ai/dsh-experimental-api-identity/types'
 import type { IdentitySessionSnapshot } from './session.ts'
 import { NS, type IdentityUiKey } from './locales.ts'
 import css from './AccountChip.module.css'
@@ -19,6 +19,7 @@ export interface AccountChipInjected {
   setLineModels: (lineId: string, modelIds: readonly string[]) => Promise<void>
   setActiveLine: (lineId: string | null) => Promise<void>
   setAccountAdmin: (username: string, admin: boolean) => Promise<void>
+  setAccountCapabilities?: (username: string, capabilities: readonly IdentityCapability[]) => Promise<void>
   hooks: { identity: HostObservable<IdentitySessionSnapshot> }
 }
 
@@ -144,6 +145,24 @@ function PasswordForm({
   )
 }
 
+const CAPABILITY_ROWS: readonly { id: IdentityCapability; labelKey: IdentityUiKey }[] = [
+  { id: 'workspace', labelKey: 'cap.workspace' },
+  { id: 'terminal', labelKey: 'cap.terminal' },
+  { id: 'mcp', labelKey: 'cap.mcp' },
+  { id: 'cordis', labelKey: 'cap.cordis' },
+]
+
+function nextCapabilities(
+  current: readonly IdentityCapability[] | undefined,
+  toggled: IdentityCapability,
+  on: boolean,
+): readonly IdentityCapability[] {
+  const selected = new Set(current ?? [])
+  if (on) selected.add(toggled)
+  else selected.delete(toggled)
+  return CAPABILITY_ROWS.map(row => row.id).filter(id => selected.has(id))
+}
+
 /**
  * Signed-in account panel: business lines and per-line models.
  * @param t - identity dictionary.
@@ -153,7 +172,17 @@ function PasswordForm({
  * @param onLogout - sign out then close.
  */
 function AccountPanel({
-  t, current, snapshot, createLine, joinLine, leaveLine, setLineModels, setActiveLine, setAccountAdmin, onLogout,
+  t,
+  current,
+  snapshot,
+  createLine,
+  joinLine,
+  leaveLine,
+  setLineModels,
+  setActiveLine,
+  setAccountAdmin,
+  setAccountCapabilities,
+  onLogout,
 }: {
   t: Copy
   current: IdentityAccountView
@@ -164,6 +193,7 @@ function AccountPanel({
   setLineModels: (lineId: string, modelIds: readonly string[]) => Promise<void>
   setActiveLine: (lineId: string | null) => Promise<void>
   setAccountAdmin: (username: string, admin: boolean) => Promise<void>
+  setAccountCapabilities?: ((username: string, capabilities: readonly IdentityCapability[]) => Promise<void>) | undefined
   onLogout: () => void
 }) {
   const [lineId, setLineId] = useState('')
@@ -204,6 +234,24 @@ function AccountPanel({
                         <span className={css.hint}>
                           {lineNames.length === 0 ? t('users.none') : lineNames.join(' · ')}
                         </span>
+                        {current.seedAdmin && !account.seedAdmin && setAccountCapabilities !== undefined && (
+                          <span className={css.caps}>
+                            {CAPABILITY_ROWS.map(cap => (
+                              <Checkbox
+                                key={cap.id}
+                                checked={account.capabilities?.includes(cap.id) === true}
+                                disabled={busy}
+                                label={t(cap.labelKey)}
+                                onChange={(next) => {
+                                  run(() => setAccountCapabilities(
+                                    account.id,
+                                    nextCapabilities(account.capabilities, cap.id, next),
+                                  ))
+                                }}
+                              />
+                            ))}
+                          </span>
+                        )}
                       </span>
                       <Checkbox
                         checked={account.admin}
@@ -331,7 +379,19 @@ function AccountPanel({
 
 /** Sidebar chip above New Session; opens the sign-in or account dialog. */
 export function AccountChip({
-  t, wide, login, register, logout, createLine, joinLine, leaveLine, setLineModels, setActiveLine, setAccountAdmin, useIdentity,
+  t,
+  wide,
+  login,
+  register,
+  logout,
+  createLine,
+  joinLine,
+  leaveLine,
+  setLineModels,
+  setActiveLine,
+  setAccountAdmin,
+  setAccountCapabilities,
+  useIdentity,
 }: AccountChipProps) {
   const snapshot = useIdentity(value => value)
   const current = snapshot.current
@@ -378,6 +438,7 @@ export function AccountChip({
               setLineModels={setLineModels}
               setActiveLine={setActiveLine}
               setAccountAdmin={setAccountAdmin}
+              setAccountCapabilities={setAccountCapabilities}
               onLogout={() => { void logout().then(() => { setOpen(false) }) }}
             />
           )

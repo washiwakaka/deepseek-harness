@@ -6,6 +6,7 @@ import type { IdentityAccountView as HostAccount } from '@deepseek-ai/dsh-experi
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   IdentityAccountView,
+  IdentityCapability,
   IdentityCatalogModel,
   IdentityLineView,
   IdentityStatus,
@@ -50,6 +51,9 @@ function toWire(account: HostAccount): IdentityAccountView {
     name: account.name,
     admin: account.admin,
     seedAdmin: account.seedAdmin,
+    ...(account.capabilities === undefined || account.capabilities.length === 0
+      ? {}
+      : { capabilities: [...account.capabilities] }),
     activeLineId: account.activeLineId ?? null,
     memberships: account.memberships.map(row => ({
       lineId: row.lineId,
@@ -180,6 +184,22 @@ export default class IdentityController extends TypertRemoteService {
   @Remote
   async setAccountAdmin(username: string, admin: boolean, signal: AbortSignal): Promise<IdentityAccountView> {
     return toWire(await mutate(signal, () => this.ctx.identity.setAccountAdmin(username, admin)))
+  }
+
+  /**
+   * Replace one account's Host feature capabilities. Requires a Config `seedAdmin`.
+   * @param username - registered account id.
+   * @param capabilities - feature groups to enable.
+   * @param signal - Client cancellation.
+   * @returns the updated account.
+   */
+  @Remote
+  async setAccountCapabilities(
+    username: string,
+    capabilities: readonly IdentityCapability[],
+    signal: AbortSignal,
+  ): Promise<IdentityAccountView> {
+    return toWire(await mutate(signal, () => this.ctx.identity.setAccountCapabilities(username, capabilities)))
   }
 
   /**

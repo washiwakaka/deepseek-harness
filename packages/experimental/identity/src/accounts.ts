@@ -4,6 +4,7 @@ import { scrypt, randomBytes, timingSafeEqual } from 'node:crypto'
 import z from 'zod'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import type { CredentialRecord } from '@deepseek-ai/dsh-credentials'
+import { IDENTITY_CAPABILITIES, type IdentityCapability } from './types.ts'
 
 /** Credentials record that holds overlay local users. */
 export const LOCAL_USERS_KEY = credentialKey('identity', 'local-users')
@@ -35,6 +36,7 @@ const storedUserSchema = z.object({
   hash: z.string(),
   n: z.number(),
   role: z.enum(['admin', 'member']).default('member'),
+  capabilities: z.array(z.enum(IDENTITY_CAPABILITIES)).default([]),
   memberships: z.array(storedMembershipSchema).default([]),
   activeLineId: z.string().optional(),
 })
@@ -52,6 +54,7 @@ export interface StoredLocalUser {
   readonly hash: string
   readonly n: number
   readonly role: 'admin' | 'member'
+  readonly capabilities?: readonly IdentityCapability[]
   readonly memberships: readonly { readonly lineId: string; readonly modelIds: readonly string[] }[]
   readonly activeLineId?: string
 }
@@ -73,6 +76,9 @@ export function storedUserWithActiveLine(
     hash: user.hash,
     n: user.n,
     role: user.role,
+    ...(user.capabilities === undefined || user.capabilities.length === 0
+      ? {}
+      : { capabilities: [...user.capabilities] }),
     memberships: user.memberships,
   }
   if (activeLineId === undefined) return next
@@ -91,6 +97,7 @@ export function toStoredUser(row: {
   hash: string
   n: number
   role: 'admin' | 'member'
+  capabilities?: readonly IdentityCapability[] | undefined
   memberships: readonly { readonly lineId: string; readonly modelIds: readonly string[] }[]
   activeLineId?: string | undefined
 }): StoredLocalUser {
@@ -101,6 +108,9 @@ export function toStoredUser(row: {
     hash: row.hash,
     n: row.n,
     role: row.role,
+    ...(row.capabilities === undefined || row.capabilities.length === 0
+      ? {}
+      : { capabilities: [...row.capabilities] }),
     memberships: row.memberships,
   }, row.activeLineId)
 }

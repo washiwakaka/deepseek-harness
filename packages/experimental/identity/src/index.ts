@@ -20,10 +20,11 @@ import {
 } from './accounts.ts'
 import type { StoredLine, StoredLocalUser } from './accounts.ts'
 import { IdentityError } from './error.ts'
-import { AccountId } from './types.ts'
+import { AccountId, IDENTITY_CAPABILITIES } from './types.ts'
 import type {
   Config,
   IdentityAccountView,
+  IdentityCapability,
   IdentityCatalogModel,
   IdentityLineView,
   IdentityMembership,
@@ -33,7 +34,7 @@ import type {
 } from './types.ts'
 
 export type * from './types.ts'
-export { AccountId, IDENTITY_CLOSED_PROVIDER, occupancyOf } from './types.ts'
+export { AccountId, IDENTITY_CAPABILITIES, IDENTITY_CLOSED_PROVIDER, occupancyOf } from './types.ts'
 export { IdentityError } from './error.ts'
 export { LOCAL_USERS_KEY } from './accounts.ts'
 
@@ -52,6 +53,9 @@ function viewOf(user: StoredLocalUser, seedAdmins: readonly string[]): IdentityA
     name: user.name,
     admin: accountIsAdmin(user, seedAdmins),
     seedAdmin: seedAdmins.includes(user.id),
+    ...(user.capabilities === undefined || user.capabilities.length === 0
+      ? {}
+      : { capabilities: [...user.capabilities] }),
     ...(user.activeLineId === undefined ? {} : { activeLineId: user.activeLineId }),
     memberships: user.memberships.map(row => ({
       lineId: row.lineId,
@@ -334,6 +338,48 @@ export class IdentityService extends Service {
         )),
       }
     })
+    this.refreshAccessForAccount(username)
+    return this.loadedAccount(username)
+  }
+
+  /**
+   * Replace one account's Host feature capabilities. Requires a Config `seedAdmin`.
+   * @param username - registered account id.
+   * @param capabilities - subset of {@link IDENTITY_CAPABILITIES}.
+   * @returns the updated account.
+   */
+  async setAccountCapabilities(
+    username: string,
+    capabilities: readonly IdentityCapability[],
+  ): Promise<IdentityAccountView> {
+    const signed = this.requireSigned()
+    if (!signed.seedAdmin) {
+      throw new IdentityError('only a Config admin may change account capabilities', 'IDENTITY_UNAUTHORIZED')
+    }
+    const unique: IdentityCapability[] = []
+    for (const cap of capabilities) {
+      if (!(IDENTITY_CAPABILITIES as readonly string[]).includes(cap)) {
+        throw new IdentityError(`unknown capability "${cap}"`, 'IDENTITY_INVALID_ARGUMENT')
+      }
+      if (!unique.includes(cap)) unique.push(cap)
+    }
+    await this.mutateStore((users, lines) => {
+      const target = users.find(user => user.id === username)
+      if (target === undefined) {
+        throw new IdentityError(`unknown account "${username}"`, 'IDENTITY_INVALID_ARGUMENT')
+      }
+      return {
+        lines,
+        users: users.map((user) => {
+          if (user.id !== username) return user
+          return storedUserWithActiveLine({
+            ...user,
+            capabilities: unique,
+          }, user.activeLineId)
+        }),
+      }
+    })
+    this.refreshAccessForAccount(username)
     return this.loadedAccount(username)
   }
 
@@ -503,6 +549,12 @@ export class IdentityService extends Service {
       kind: 'local-identity',
       browserSessionId: peerId as PeerId,
     })
+  }
+
+  private refreshAccessForAccount(accountId: string): void {
+    for (const [peerId, bound] of this.sessions) {
+      if (bound === accountId) this.refreshAccess(peerId)
+    }
   }
 
   private loadedAccount(id: string): IdentityAccountView {

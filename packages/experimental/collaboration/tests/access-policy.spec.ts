@@ -8,6 +8,8 @@ import type { RoomOccupancy } from '../src/access-policy.ts'
 const ALICE = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
 const BOB = { kind: 'local-identity' as const, browserSessionId: 'peer-bob' as PeerId }
 const ADMIN = { kind: 'local-identity' as const, browserSessionId: 'peer-admin' as PeerId }
+const SEED = { kind: 'local-identity' as const, browserSessionId: 'peer-seed' as PeerId }
+const WORKSPACE = { kind: 'local-identity' as const, browserSessionId: 'peer-ws' as PeerId }
 const UNSIGNED = { kind: 'local-identity' as const, browserSessionId: 'peer-anon' as PeerId }
 
 const ROOM = SessionId('room-1')
@@ -23,13 +25,13 @@ function occupancy(rooms: Record<string, RoomOccupancy>) {
 function actionsOf(
   policy: ReturnType<typeof createLocalIdentityAccessPolicy>,
   principal: typeof ALICE,
-  kind: 'global' | 'session',
+  kind: 'global' | 'session' | 'workspace',
   id?: string,
 ): readonly string[] {
   const binding = policy.bindings(principal).find(row => (
     kind === 'global'
       ? row.resource.kind === 'global'
-      : row.resource.kind === 'session' && row.resource.id === id
+      : row.resource.kind === kind && row.resource.id === id
   ))
   return binding === undefined ? [] : [...binding.role.actions]
 }
@@ -37,13 +39,17 @@ function actionsOf(
 function allows(
   policy: ReturnType<typeof createLocalIdentityAccessPolicy>,
   principal: typeof ALICE,
-  action: 'session/list' | 'session/follow' | 'session/prompt' | 'collaboration/claimRoom',
-  resource: { readonly kind: 'session'; readonly id: SessionId } | { readonly kind: 'global' },
+  action: 'session/list' | 'session/follow' | 'session/prompt' | 'session/create'
+    | 'collaboration/claimRoom' | 'collaboration/postMessage',
+  resource: { readonly kind: 'session'; readonly id: SessionId }
+    | { readonly kind: 'global' }
+    | { readonly kind: 'workspace'; readonly id: string },
 ): boolean {
   const bindings = policy.bindings(principal)
   for (const binding of bindings) {
     if (binding.resource.kind !== resource.kind) continue
     if (resource.kind === 'session' && binding.resource.kind === 'session' && binding.resource.id !== resource.id) continue
+    if (resource.kind === 'workspace' && binding.resource.kind === 'workspace' && binding.resource.id !== resource.id) continue
     if (!binding.role.actions.includes(action)) continue
     if (binding.condition === undefined) return true
     if (resource.kind === 'global' && binding.resource.kind === 'global') {
@@ -80,13 +86,17 @@ describe('local-identity session access policy', () => {
   }
   const facts = {
     accountForBrowserSession(id: string) {
-      if (id === 'peer-alice') return { id: 'alice', admin: false }
+      if (id === 'peer-alice') return { id: 'alice', admin: false, capabilities: ['terminal'] as const }
       if (id === 'peer-bob') return { id: 'bob', admin: false }
-      if (id === 'peer-admin') return { id: 'admin', admin: true }
+      if (id === 'peer-admin') return { id: 'admin', admin: true, seedAdmin: false }
+      if (id === 'peer-seed') return { id: 'root', admin: true, seedAdmin: true }
+      if (id === 'peer-ws') return { id: 'ws-user', admin: false, capabilities: ['workspace'] as const }
       return undefined
     },
     listedSessions: () => [ROOM, BOB_ROOM, BLANK, ALICE_CHILD, BOB_CHILD],
     occupancy: occupancy(rooms),
+    fullGlobalActions: () => ['settings/describe', 'credentials/describe', 'dynamicCordisRunner/inventory'] as const,
+    listedWorkspaces: () => ['ws-1' as never],
   }
   const policy = createLocalIdentityAccessPolicy(facts)
 
@@ -95,6 +105,7 @@ describe('local-identity session access policy', () => {
       'identity/loginPassword',
       'identity/status',
       'session/list',
+      'workspace/follow',
     ]))
     expect(actionsOf(policy, UNSIGNED, 'global')).not.toEqual(expect.arrayContaining([
       'identity/listAccounts',
@@ -129,6 +140,78 @@ describe('local-identity session access policy', () => {
     expect(allows(policy, ALICE, 'session/follow', { kind: 'session', id: BLANK })).toBe(false)
     expect(allows(policy, ALICE, 'session/prompt', { kind: 'session', id: BLANK })).toBe(false)
     expect(allows(policy, ALICE, 'collaboration/claimRoom', { kind: 'session', id: BLANK })).toBe(true)
+    expect(allows(policy, ALICE, 'collaboration/postMessage', { kind: 'session', id: BLANK })).toBe(true)
+  })
+
+  it('lets an admin post to an unclaimed room instead of swallowing claim under read', () => {
+    expect(allows(policy, ADMIN, 'session/follow', { kind: 'session', id: BLANK })).toBe(true)
+    expect(allows(policy, ADMIN, 'session/prompt', { kind: 'session', id: BLANK })).toBe(false)
+    expect(allows(policy, ADMIN, 'collaboration/claimRoom', { kind: 'session', id: BLANK })).toBe(true)
+    expect(allows(policy, ADMIN, 'collaboration/postMessage', { kind: 'session', id: BLANK })).toBe(true)
+    expect(allows(policy, SEED, 'collaboration/postMessage', { kind: 'session', id: BLANK })).toBe(true)
+    expect(allows(policy, ADMIN, 'collaboration/postMessage', { kind: 'session', id: BOB_ROOM })).toBe(false)
+  })
+
+  it('names a signed-in global or workspace refusal as not-allowed, not occupancy', () => {
+    expect(policy.explain?.({
+      principal: ALICE,
+      action: 'dynamicCordisRunner/inventory',
+      resources: [{ kind: 'global' }],
+    })).toBe('not-allowed')
+    expect(policy.explain?.({
+      principal: ALICE,
+      action: 'workspace/delete',
+      resources: [{ kind: 'workspace', id: 'ws-1' as never }],
+    })).toBe('not-allowed')
+  })
+
+  it('gives an invited non-creator occupant only their granted capabilities on the room', () => {
+    const sharedRoom = SessionId('room-shared')
+    const sharedPolicy = createLocalIdentityAccessPolicy({
+      ...facts,
+      listedSessions: () => [sharedRoom],
+      occupancy: occupancy({
+        [sharedRoom]: {
+          occupants: ['alice', 'bob'],
+          children: {},
+          childOwners: {},
+        },
+      }),
+    })
+    expect(actionsOf(sharedPolicy, ALICE, 'session', sharedRoom)).toEqual(expect.arrayContaining([
+      'workspaceFiles/list',
+      'dynamicCordisRunner/stopFromPanel',
+    ]))
+    expect(actionsOf(sharedPolicy, BOB, 'session', sharedRoom)).toEqual(expect.arrayContaining([
+      'session/prompt',
+      'goals/create',
+      'workspace/pinSession',
+    ]))
+    expect(actionsOf(sharedPolicy, BOB, 'session', sharedRoom)).not.toEqual(expect.arrayContaining([
+      'workspaceFiles/list',
+      'terminal/create',
+      'dynamicCordisRunner/stopFromPanel',
+    ]))
+    const invitedBranch = SessionId('child-invited-bob')
+    const missingOccupancy = SessionId('room-unhydrated')
+    const edgePolicy = createLocalIdentityAccessPolicy({
+      accountForBrowserSession: id => facts.accountForBrowserSession(id),
+      listedSessions: () => [sharedRoom, invitedBranch, missingOccupancy],
+      occupancy: occupancy({
+        [sharedRoom]: {
+          occupants: ['alice', 'bob'],
+          children: { 'bob:model': invitedBranch },
+          childOwners: { [invitedBranch]: 'bob' },
+        },
+      }),
+    })
+    expect(allows(edgePolicy, BOB, 'session/prompt', { kind: 'session', id: invitedBranch })).toBe(true)
+    expect(allows(edgePolicy, ALICE, 'collaboration/postMessage', { kind: 'session', id: missingOccupancy })).toBe(true)
+    expect(allows(edgePolicy, ADMIN, 'session/follow', { kind: 'session', id: missingOccupancy })).toBe(true)
+    expect(allows(edgePolicy, ADMIN, 'collaboration/postMessage', { kind: 'session', id: missingOccupancy })).toBe(true)
+    expect(actionsOf(edgePolicy, SEED, 'global')).toEqual(expect.arrayContaining([
+      'identity/setAccountCapabilities',
+    ]))
   })
 
   it('keeps signed-in global actions to identity and the session catalog', () => {
@@ -136,10 +219,14 @@ describe('local-identity session access policy', () => {
       'identity/joinLine',
       'identity/status',
       'session/list',
+      'session/create',
+      'terminal/create',
     ]))
     expect(actionsOf(policy, ALICE, 'global')).not.toEqual(expect.arrayContaining([
       'identity/createLine',
       'identity/listAccounts',
+      'identity/setAccountCapabilities',
+      'dynamicCordisRunner/inventory',
       'session/follow',
       'session/prompt',
     ]))
@@ -147,12 +234,93 @@ describe('local-identity session access policy', () => {
       'identity/createLine',
       'identity/listAccounts',
       'identity/setAccountAdmin',
+      'workspace/create',
+      'directoryPicker/pick',
     ]))
+    expect(actionsOf(policy, ADMIN, 'global')).not.toEqual(expect.arrayContaining([
+      'identity/setAccountCapabilities',
+      'settings/describe',
+      'dynamicCordisRunner/inventory',
+      'workspaceFiles/list',
+    ]))
+    expect(actionsOf(policy, ALICE, 'global')).not.toEqual(expect.arrayContaining([
+      'workspace/create',
+      'directoryPicker/pick',
+    ]))
+    expect(actionsOf(policy, SEED, 'global')).toEqual(expect.arrayContaining([
+      'identity/setAccountCapabilities',
+      'settings/describe',
+      'credentials/describe',
+      'dynamicCordisRunner/inventory',
+      'workspace/create',
+    ]))
+    expect(allows(policy, ALICE, 'session/create', { kind: 'workspace', id: 'ws-1' })).toBe(true)
+    expect(allows(policy, ADMIN, 'session/create', { kind: 'workspace', id: 'ws-1' })).toBe(true)
+    expect(allows(policy, SEED, 'session/create', { kind: 'workspace', id: 'ws-1' })).toBe(true)
+    expect(actionsOf(policy, ALICE, 'workspace', 'ws-1')).toEqual(expect.arrayContaining([
+      'session/create',
+      'workspace/follow',
+    ]))
+    expect(actionsOf(policy, ALICE, 'workspace', 'ws-1')).not.toEqual(expect.arrayContaining([
+      'workspace/rename',
+      'workspace/delete',
+    ]))
+    expect(actionsOf(policy, ADMIN, 'workspace', 'ws-1')).toEqual(expect.arrayContaining([
+      'session/create',
+      'workspace/rename',
+      'workspace/delete',
+    ]))
+    expect(actionsOf(policy, WORKSPACE, 'global')).toEqual(expect.arrayContaining([
+      'workspace/create',
+      'directoryPicker/pick',
+    ]))
+    expect(actionsOf(policy, WORKSPACE, 'workspace', 'ws-1')).toEqual(expect.arrayContaining([
+      'session/create',
+      'workspace/rename',
+      'workspace/delete',
+      'workspaceFiles/list',
+      'directoryPicker/pick',
+    ]))
+    expect(actionsOf(policy, SEED, 'workspace', 'ws-1')).toEqual(expect.arrayContaining([
+      'session/create',
+      'workspace/follow',
+      'workspace/rename',
+      'workspaceFiles/list',
+    ]))
+    expect(allows(policy, SEED, 'session/list', { kind: 'session', id: BOB_ROOM })).toBe(true)
+    expect(allows(policy, SEED, 'session/prompt', { kind: 'session', id: BOB_ROOM })).toBe(false)
   })
 
   it('lets an occupant write their room and own branch, not Bob\'s', () => {
     expect(allows(policy, ALICE, 'session/prompt', { kind: 'session', id: ROOM })).toBe(true)
     expect(allows(policy, ALICE, 'session/prompt', { kind: 'session', id: ALICE_CHILD })).toBe(true)
+    expect(actionsOf(policy, ALICE, 'session', ROOM)).toEqual(expect.arrayContaining([
+      'session/prompt',
+      'agentTeams/setEnabled',
+      'workspace/pinSession',
+      'workspace/archiveSession',
+      'workspaceFiles/list',
+      'workspaceFiles/read',
+      'terminal/create',
+      'goals/create',
+      'messageFeedback/put',
+      'subagent/prompt',
+      'actionCards/act',
+      'fileReferences/list',
+      'dynamicCordisRunner/stopFromPanel',
+    ]))
+    expect(actionsOf(policy, BOB, 'session', BOB_ROOM)).toEqual(expect.arrayContaining([
+      'session/prompt',
+      'workspaceFiles/list',
+      'terminal/create',
+      'fileReferences/list',
+      'dynamicCordisRunner/stopFromPanel',
+    ]))
+    expect(actionsOf(policy, BOB, 'global')).not.toEqual(expect.arrayContaining([
+      'workspaceFiles/list',
+      'terminal/create',
+      'dynamicCordisRunner/inventory',
+    ]))
     expect(allows(policy, ALICE, 'session/prompt', { kind: 'session', id: BOB_ROOM })).toBe(false)
     expect(allows(policy, ALICE, 'session/prompt', { kind: 'session', id: BOB_CHILD })).toBe(false)
   })

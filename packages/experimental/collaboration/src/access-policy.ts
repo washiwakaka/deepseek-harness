@@ -1,6 +1,7 @@
 /** Host remoteAccess policy for overlay `local-identity` browsers. */
 
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { ActorId } from './types.ts'
 import type {
   RemoteAccessAction,
@@ -9,7 +10,7 @@ import type {
   RemoteAccessRequest,
   RemoteAccessRole,
 } from '@deepseek-ai/dsh-api-remote-access/types'
-import type { LocalIdentityPrincipal } from '@deepseek-ai/dsh-experimental-identity'
+import type { IdentityCapability, LocalIdentityPrincipal } from '@deepseek-ai/dsh-experimental-identity'
 
 /** Occupancy fields the policy reads from a live room projection. */
 export interface RoomOccupancy {
@@ -18,13 +19,21 @@ export interface RoomOccupancy {
   readonly childOwners: Readonly<Record<string, string>>
 }
 
+/** Account fields the policy reads from `ctx.identity`. */
+export interface LocalIdentityPolicyAccount {
+  readonly id: string
+  readonly admin: boolean
+  readonly seedAdmin?: boolean
+  readonly capabilities?: readonly IdentityCapability[]
+}
+
 /** Synchronous Host state the overlay session policy reads. */
 export interface LocalIdentityAccessFacts {
   /**
    * Account bound to one browser-session Peer.
    * @param browserSessionId - cookie Peer id on the principal.
    */
-  accountForBrowserSession(browserSessionId: string): { readonly id: string; readonly admin: boolean } | undefined
+  accountForBrowserSession(browserSessionId: string): LocalIdentityPolicyAccount | undefined
   /** Live and persisted room ids the occupancy cache still knows. */
   listedSessions(): readonly SessionId[]
   /**
@@ -33,6 +42,14 @@ export interface LocalIdentityAccessFacts {
    * @returns occupancy, or `undefined` when neither the live journal nor the cache has it.
    */
   occupancy(sessionId: SessionId): RoomOccupancy | undefined
+  /** Registered Remote endpoints and forwarded events for full-capability `seedAdmin` accounts. */
+  fullGlobalActions?: () => readonly RemoteAccessAction[]
+  /**
+   * Durable Workspaces listed for every signed-in account.
+   * `session/create` is a workspace-resource call, so this list must include
+   * every Workspace the account may open or the Gateway denies creation.
+   */
+  listedWorkspaces?: () => readonly WorkspaceId[]
 }
 
 /** Calls an unsigned browser may make so the account chip and an empty Session list still load. */
@@ -47,6 +64,7 @@ const UNSIGNED_GLOBAL_ACTIONS: readonly RemoteAccessAction[] = [
   'session/control',
   'session/canOpenWorkspacePath',
   'session/modelCatalog',
+  'workspace/follow',
 ]
 
 const SESSION_EVENTS: readonly RemoteAccessAction[] = [
@@ -72,6 +90,7 @@ const SESSION_READ_ACTIONS: readonly RemoteAccessAction[] = [
   'session/wait',
   'commands/list',
   'goals/get',
+  'messageFeedback/list',
   'skills/list',
   'toolResults/watch',
   'workspace/follow',
@@ -85,12 +104,34 @@ const SESSION_WRITE_ACTIONS: readonly RemoteAccessAction[] = [
   'session/fork',
   'session/attachment',
   'session/updateQueue',
+  'session/selectModel',
+  'commands/execute',
+  'goals/create',
+  'goals/edit',
+  'goals/pause',
+  'goals/resume',
+  'goals/complete',
+  'goals/clear',
+  'messageFeedback/put',
+  'messageFeedback/delete',
+  'sessionFeedback/record',
+  'subagent/prompt',
+  'subagent/interruptByUser',
+  'actionCards/act',
+  'userQuestions/answer',
+  'userQuestions/attachWait',
   'fileUploads/upload',
   'collaboration/postMessage',
   'collaboration/publish',
   'collaboration/claimRoom',
   'collaboration/sendWithRoom',
   'collaboration/admitRoomContext',
+  'agentTeams/setEnabled',
+  'workspace/archiveSession',
+  'workspace/unarchiveSession',
+  'workspace/pinSession',
+  'workspace/unpinSession',
+  'workspace/insertSessionBefore',
 ]
 
 const SIGNED_GLOBAL_ACTIONS: readonly RemoteAccessAction[] = [
@@ -100,21 +141,206 @@ const SIGNED_GLOBAL_ACTIONS: readonly RemoteAccessAction[] = [
   'identity/leaveLine',
   'identity/setLineModels',
   'identity/setActiveLine',
+  'session/create',
+  'session/initializeDefaultModel',
+  'workspace/follow',
+  'collaboration/listActors',
+  'collaboration/listMentionModels',
+  'event:commands/change',
+  'event:goal/activation-changed',
+  'event:llm/adapters-updated',
+  'event:llm/models-updated',
+  'event:permission-presets/catalog-changed',
 ]
 
 const ADMIN_GLOBAL_ACTIONS: readonly RemoteAccessAction[] = [
   'identity/listAccounts',
   'identity/setAccountAdmin',
   'identity/createLine',
+  'workspace/create',
+  'workspace/initializeDefault',
+  'workspace/rename',
+  'workspace/delete',
+  'workspace/insertBefore',
+  'workspace/insertSessionBefore',
+  'directoryPicker/list',
+  'directoryPicker/pick',
+  'directoryPicker/createDirectory',
 ]
+
+const SEED_ADMIN_GLOBAL_ACTIONS: readonly RemoteAccessAction[] = [
+  'identity/setAccountCapabilities',
+]
+
+const CAPABILITY_GLOBAL_ACTIONS: Readonly<Record<IdentityCapability, readonly RemoteAccessAction[]>> = {
+  workspace: [
+    'workspace/follow',
+    'workspace/create',
+    'workspace/initializeDefault',
+    'workspace/rename',
+    'workspace/delete',
+    'workspace/insertBefore',
+    'workspace/insertSessionBefore',
+    'workspace/archiveSession',
+    'workspace/unarchiveSession',
+    'workspace/pinSession',
+    'workspace/unpinSession',
+    'directoryPicker/list',
+    'directoryPicker/pick',
+    'directoryPicker/createDirectory',
+    'workspaceFiles/list',
+    'workspaceFiles/read',
+    'workspaceFiles/readBytes',
+    'workspaceFiles/stat',
+    'workspaceFiles/changes',
+    'session/openWorkspacePath',
+    'session/workspacePathApplications',
+    'fileReferences/list',
+    'sessionReferenceResolver/candidates',
+  ],
+  terminal: [
+    'terminal/attach',
+    'terminal/close',
+    'terminal/create',
+    'terminal/environment',
+    'terminal/list',
+    'terminal/rename',
+    'terminal/retain',
+    'terminal/shells',
+    'job/follow',
+    'job/kill',
+    'job/list',
+  ],
+  mcp: [
+    'mcpManager/probe',
+    'mcpManager/restart',
+    'mcpManager/watch',
+    'agentPresets/list',
+    'agentPresets/read',
+    'agentPresets/select',
+    'schedule/catalog',
+    'schedule/create',
+    'schedule/deliveryLimits',
+    'schedule/deleteInactive',
+    'schedule/edit',
+    'schedule/history',
+    'schedule/list',
+    'schedule/run',
+    'schedule/view',
+    'event:agent-preset/selected',
+    'event:schedule/changed',
+  ],
+  cordis: [
+    'dynamicCordisRunner/getClientCode',
+    'dynamicCordisRunner/inventory',
+    'dynamicCordisRunner/invoke',
+    'dynamicCordisRunner/reportClientGuardFailure',
+    'dynamicCordisRunner/reportRenderFailure',
+    'dynamicCordisRunner/resolveInspectQuery',
+    'dynamicCordisRunner/resolveRequestRun',
+    'dynamicCordisRunner/runHostHalf',
+    'dynamicCordisRunner/settleUserRun',
+    'dynamicCordisRunner/stopFromPanel',
+    'dynamicCordisRunner/syncInspectManifest',
+    'dynamicCordisRunner/undefineFromPanel',
+    'event:cordis/request-run',
+    'event:cordis/request-run-resolved',
+    'event:cordis/dynamic-package',
+    'event:cordis/dynamic-retract',
+    'event:cordis/inspect-query',
+    'event:cordis/inspect-query-resolved',
+  ],
+}
+
+const CAPABILITY_SESSION_ACTIONS: Readonly<Record<IdentityCapability, readonly RemoteAccessAction[]>> = {
+  workspace: [
+    'workspace/insertSessionBefore',
+    'workspace/archiveSession',
+    'workspace/unarchiveSession',
+    'workspace/pinSession',
+    'workspace/unpinSession',
+    'workspaceFiles/list',
+    'workspaceFiles/read',
+    'workspaceFiles/readBytes',
+    'workspaceFiles/stat',
+    'workspaceFiles/changes',
+    'fileReferences/list',
+    'sessionReferenceResolver/candidates',
+  ],
+  terminal: [
+    'terminal/attach',
+    'terminal/close',
+    'terminal/create',
+    'terminal/environment',
+    'terminal/list',
+    'terminal/rename',
+    'terminal/retain',
+    'terminal/shells',
+    'job/follow',
+    'job/kill',
+    'job/list',
+  ],
+  mcp: [
+    'agentPresets/select',
+  ],
+  cordis: [
+    'dynamicCordisRunner/reportClientGuardFailure',
+    'dynamicCordisRunner/reportRenderFailure',
+    'dynamicCordisRunner/resolveInspectQuery',
+    'dynamicCordisRunner/runHostHalf',
+    'dynamicCordisRunner/settleUserRun',
+    'dynamicCordisRunner/stopFromPanel',
+    'dynamicCordisRunner/undefineFromPanel',
+  ],
+}
+
+const SIGNED_WORKSPACE_ACTIONS: readonly RemoteAccessAction[] = [
+  'session/create',
+  'workspace/follow',
+]
+
+const WORKSPACE_ACTIONS: readonly RemoteAccessAction[] = [
+  ...SIGNED_WORKSPACE_ACTIONS,
+  'workspace/rename',
+  'workspace/delete',
+  'workspace/insertBefore',
+  'workspace/insertSessionBefore',
+]
+
+function uniqueActions(list: readonly RemoteAccessAction[]): readonly RemoteAccessAction[] {
+  const seen = new Set<RemoteAccessAction>()
+  const actions: RemoteAccessAction[] = []
+  for (const action of list) {
+    if (seen.has(action)) continue
+    seen.add(action)
+    actions.push(action)
+  }
+  return actions
+}
+
+/** Workspace-resource actions for accounts granted the Workspace capability. */
+const FULL_WORKSPACE_ACTIONS: readonly RemoteAccessAction[] = uniqueActions([
+  ...WORKSPACE_ACTIONS,
+  ...CAPABILITY_GLOBAL_ACTIONS.workspace,
+])
 
 const SESSION_OCCUPANT_ACTIONS: readonly RemoteAccessAction[] = [
   ...SESSION_READ_ACTIONS,
   ...SESSION_WRITE_ACTIONS,
 ]
 
-/** Leftover empty rooms may be claimed; they stay off list/follow/prompt. */
-const UNCLAIMED_ACTIONS: readonly RemoteAccessAction[] = ['collaboration/claimRoom']
+/**
+ * Leftover empty rooms stay off list/follow/prompt for ordinary members.
+ * Claim and the first room post both admit the signed-in account, so Gateway
+ * must allow `postMessage` here or an admin's read binding would swallow the
+ * claim and block the creator.
+ */
+const UNCLAIMED_ACTIONS: readonly RemoteAccessAction[] = [
+  'collaboration/claimRoom',
+  'collaboration/postMessage',
+  'collaboration/sendWithRoom',
+  'collaboration/admitRoomContext',
+]
 
 const UNSIGNED_GLOBAL: RemoteAccessRole<'global'> = {
   name: 'identity:unsigned-global',
@@ -124,10 +350,19 @@ const UNSIGNED_GLOBAL: RemoteAccessRole<'global'> = {
 
 /**
  * Build the overlay session ACL. Unsigned browsers get identity plus an empty
- * Session list. Occupants read and write their rooms and own branches. Admins
- * read every listed Session and write only rooms they occupy. Unclaimed rooms
- * expose only `collaboration/claimRoom`.
- * @param facts - identity map, listed Sessions, and occupancy.
+ * Session list. Occupants read and write their rooms and own branches. The
+ * first occupant is the creator and receives every session-scoped Host action
+ * on that room and their own branches, regardless of role or granted
+ * capabilities. Admins read every listed Session and write only rooms they occupy. A Config
+ * `seedAdmin` gets full Host global and workspace capabilities while session
+ * writes stay on occupied rooms. Signed-in accounts may `session/create` on
+ * listed Workspaces. `workspace`-capable accounts and seed admins receive
+ * every workspace-scoped Host action on those Workspaces; other admins may
+ * add, rename, and delete. Occupants pin or archive Sessions they occupy.
+ * Occupants may set Agent Teams mode on rooms they write. Unclaimed rooms
+ * expose `collaboration/claimRoom` and the first room post, including when
+ * an admin also has a read binding.
+ * @param facts - identity map, listed Sessions, occupancy, and Host catalogs.
  * @returns a `remoteAccess` policy for `local-identity`.
  */
 export function createLocalIdentityAccessPolicy(
@@ -139,7 +374,11 @@ export function createLocalIdentityAccessPolicy(
       const bindings: RemoteAccessBinding[] = [{
         role: account === undefined
           ? UNSIGNED_GLOBAL
-          : { name: 'identity:signed-global', resource: 'global', actions: signedGlobalActions(account.admin) },
+          : {
+            name: account.seedAdmin ? 'identity:seed-admin-global' : 'identity:signed-global',
+            resource: 'global',
+            actions: signedGlobalActions(account, facts.fullGlobalActions),
+          },
         resource: { kind: 'global' },
       }]
       if (account === undefined) return bindings
@@ -152,21 +391,26 @@ export function createLocalIdentityAccessPolicy(
         for (const child of Object.values(room.children)) childOf.add(child)
       }
       const writeIds = new Set<string>()
+      const creatorIds = new Set<string>()
       const readIds = new Set<string>()
       const claimIds = new Set<string>()
       for (const sessionId of listed) {
         if (childOf.has(sessionId)) continue
         const room = facts.occupancy(sessionId)
         if (room === undefined) {
+          claimIds.add(sessionId)
           if (account.admin) readIds.add(sessionId)
           continue
         }
         if (isOccupant(actor, room)) {
           readIds.add(sessionId)
           writeIds.add(sessionId)
+          const created = isCreator(actor, room)
+          if (created) creatorIds.add(sessionId)
           for (const child of ownedChildren(actor, room)) {
             readIds.add(child)
             writeIds.add(child)
+            if (created) creatorIds.add(child)
           }
           continue
         }
@@ -184,36 +428,88 @@ export function createLocalIdentityAccessPolicy(
         for (const sessionId of listed) readIds.add(sessionId)
       }
       for (const id of readIds) {
-        bindings.push(sessionBinding(SessionId(id), writeIds.has(id) ? 'occupant' : 'read'))
+        bindings.push(sessionBinding(
+          SessionId(id),
+          writeIds.has(id) ? 'occupant' : 'read',
+          occupantSessionActions(account, creatorIds.has(id)),
+        ))
       }
       for (const id of claimIds) {
-        if (readIds.has(id) || writeIds.has(id)) continue
-        bindings.push(sessionBinding(SessionId(id), 'claim'))
+        bindings.push(sessionBinding(SessionId(id), 'claim', occupantSessionActions(account, false)))
+      }
+      const workspaceActions = account.seedAdmin || account.capabilities?.includes('workspace') === true
+        ? FULL_WORKSPACE_ACTIONS
+        : account.admin
+          ? WORKSPACE_ACTIONS
+          : SIGNED_WORKSPACE_ACTIONS
+      for (const workspaceId of facts.listedWorkspaces?.() ?? []) {
+        bindings.push(workspaceBinding(workspaceId, workspaceActions))
       }
       return bindings
     },
     explain(request: RemoteAccessRequest<LocalIdentityPrincipal>) {
       const account = facts.accountForBrowserSession(request.principal.browserSessionId)
-      return account === undefined ? 'not-signed-in' : 'not-an-occupant'
+      if (account === undefined) return 'not-signed-in'
+      if (request.resources.some(resource => resource.kind === 'global' || resource.kind === 'workspace')) {
+        return 'not-allowed'
+      }
+      return 'not-an-occupant'
     },
   }
 }
 
-function signedGlobalActions(admin: boolean): readonly RemoteAccessAction[] {
+function signedGlobalActions(
+  account: LocalIdentityPolicyAccount,
+  fullGlobalActions?: () => readonly RemoteAccessAction[],
+): readonly RemoteAccessAction[] {
   const seen = new Set<RemoteAccessAction>()
   const actions: RemoteAccessAction[] = []
-  const extra = admin ? ADMIN_GLOBAL_ACTIONS : []
-  for (const action of [...UNSIGNED_GLOBAL_ACTIONS, ...SIGNED_GLOBAL_ACTIONS, ...extra, ...SESSION_EVENTS]) {
-    if (seen.has(action)) continue
-    seen.add(action)
-    actions.push(action)
+  const add = (list: readonly RemoteAccessAction[]) => {
+    for (const action of list) {
+      if (seen.has(action)) continue
+      seen.add(action)
+      actions.push(action)
+    }
   }
+  add(UNSIGNED_GLOBAL_ACTIONS)
+  add(SIGNED_GLOBAL_ACTIONS)
+  if (account.admin) add(ADMIN_GLOBAL_ACTIONS)
+  if (account.seedAdmin) {
+    add(SEED_ADMIN_GLOBAL_ACTIONS)
+    for (const group of Object.values(CAPABILITY_GLOBAL_ACTIONS)) add(group)
+    if (fullGlobalActions !== undefined) add(fullGlobalActions())
+  } else {
+    for (const cap of account.capabilities ?? []) {
+      add(CAPABILITY_GLOBAL_ACTIONS[cap])
+    }
+  }
+  add(SESSION_EVENTS)
   return actions
 }
 
-function sessionBinding(id: SessionId, mode: 'occupant' | 'read' | 'claim'): RemoteAccessBinding {
+function occupantSessionActions(
+  account: LocalIdentityPolicyAccount,
+  asCreator: boolean,
+): readonly RemoteAccessAction[] {
+  if (asCreator || account.seedAdmin) {
+    return uniqueActions([
+      ...SESSION_OCCUPANT_ACTIONS,
+      ...Object.values(CAPABILITY_SESSION_ACTIONS).flat(),
+    ])
+  }
+  return uniqueActions([
+    ...SESSION_OCCUPANT_ACTIONS,
+    ...(account.capabilities ?? []).flatMap(cap => CAPABILITY_SESSION_ACTIONS[cap]),
+  ])
+}
+
+function sessionBinding(
+  id: SessionId,
+  mode: 'occupant' | 'read' | 'claim',
+  occupantActions: readonly RemoteAccessAction[],
+): RemoteAccessBinding {
   const actions = mode === 'occupant'
-    ? SESSION_OCCUPANT_ACTIONS
+    ? occupantActions
     : mode === 'read'
       ? SESSION_READ_ACTIONS
       : UNCLAIMED_ACTIONS
@@ -227,8 +523,26 @@ function sessionBinding(id: SessionId, mode: 'occupant' | 'read' | 'claim'): Rem
   }
 }
 
+function workspaceBinding(
+  id: WorkspaceId,
+  actions: readonly RemoteAccessAction[],
+): RemoteAccessBinding {
+  return {
+    role: {
+      name: 'identity:workspace',
+      resource: 'workspace',
+      actions,
+    },
+    resource: { kind: 'workspace', id },
+  }
+}
+
 function isOccupant(actor: ActorId, room: RoomOccupancy): boolean {
   return room.occupants.includes(actor)
+}
+
+function isCreator(actor: ActorId, room: RoomOccupancy): boolean {
+  return room.occupants[0] === actor
 }
 
 function isUnclaimed(room: RoomOccupancy): boolean {
@@ -240,7 +554,6 @@ function ownedChildren(actor: ActorId, room: RoomOccupancy): readonly string[] {
   for (const child of Object.values(room.children)) {
     const owner = room.childOwners[child]
     if (owner !== undefined && owner !== actor) continue
-    if (owner === undefined && !room.occupants.includes(actor)) continue
     ids.push(child)
   }
   return ids

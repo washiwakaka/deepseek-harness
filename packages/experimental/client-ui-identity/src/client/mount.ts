@@ -2,6 +2,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -67,16 +68,26 @@ function registerIdentityUi(ctx: ClientContext): void {
   const session = new IdentitySessionStore()
   ctx.provide('identitySession', session)
   ctx.effect(() => {
-    let cancelled = false
-    void pullStatus(ctx, session).then(() => {
-      if (cancelled) return
-    }, () => {
-      if (cancelled) return
+    void pullStatus(ctx, session).catch((statusError: unknown) => {
+      void statusError
     })
-    return () => {
-      cancelled = true
-    }
+    return () => {}
   }, 'client-ui-identity: status')
+  ctx.effect(() => {
+    let accountId = session.getSnapshot().current?.id
+    return session.subscribe(() => {
+      const next = session.getSnapshot().current?.id
+      if (next === accountId) return
+      accountId = next
+      queueMicrotask(() => {
+        const sessions = ctx.get('sessions')
+        if (sessions === undefined) return
+        void sessions.refresh().catch((listError: unknown) => {
+          void listError
+        })
+      })
+    })
+  }, 'client-ui-identity: session list')
   ctx.slots.inject(
     'sidebar.account',
     () => ctx.slots.register({
@@ -130,6 +141,11 @@ function registerIdentityUi(ctx: ClientContext): void {
         },
         setAccountAdmin: async (username, admin) => {
           const result = await ctx.remote.identity.setAccountAdmin(username, admin)
+          if (!result.ok) throw result.error
+          await pullStatus(ctx, session)
+        },
+        setAccountCapabilities: async (username, capabilities) => {
+          const result = await ctx.remote.identity.setAccountCapabilities(username, capabilities)
           if (!result.ok) throw result.error
           await pullStatus(ctx, session)
         },

@@ -35,7 +35,7 @@ Load from the collaboration-profile bundle. The chip sits above New session. Wid
 <details>
 <summary>Maintainer details — click to expand</summary>
 
-`status()` and `listCatalogModels` fill `IdentitySessionStore`. Password register then calls `loginPassword`. The signed-in panel calls `joinLine`, `leaveLine`, `setLineModels`, and `setActiveLine`. When `current.admin` is true the panel also shows the create-line form, lists `status().accounts`, and calls `createLine` and `setAccountAdmin`. An account with `seedAdmin` has a disabled Admin checkbox. Methods with `kind: 'oauth'` render as disabled coming-later buttons until a Host method and Remote exist. Disposing the plugin fiber removes the slot and the Remote mount.
+`status()` and `listCatalogModels` fill `IdentitySessionStore`. Password register then calls `loginPassword`. The signed-in panel calls `joinLine`, `leaveLine`, `setLineModels`, and `setActiveLine`. When `current.admin` is true the panel also shows the create-line form, lists `status().accounts`, and calls `createLine` and `setAccountAdmin`. An account with `seedAdmin` has a disabled Admin checkbox and can grant later users Host capabilities such as Workspace. Methods with `kind: 'oauth'` render as disabled coming-later buttons until a Host method and Remote exist. A change of `current.id` calls `sessions.refresh()` so the sidebar Session list matches the signed-in account, including after sign-out. Disposing the plugin fiber removes the slot and the Remote mount.
 
 </details>
 

@@ -47,7 +47,13 @@ const t = ((key: string, vars?: Record<string, string>) => {
   if (key === 'users.empty') return 'No users yet'
   if (key === 'users.none') return 'No business lines'
   if (key === 'users.admin') return 'Admin'
-  if (key === 'sessions.hint') return 'Admins can see every session in the sidebar. Check a later user in this list to make them an admin.'
+  if (key === 'cap.workspace') return 'Workspace'
+  if (key === 'cap.terminal') return 'Terminal'
+  if (key === 'cap.mcp') return 'MCP'
+  if (key === 'cap.cordis') return 'Cordis'
+  if (key === 'sessions.hint') {
+    return 'Admins can see every session in the sidebar and can add, rename, or delete workspaces. Check Admin to promote a later user. Check Workspace to let that user add workspaces.'
+  }
   return key
 }) as never
 
@@ -73,6 +79,7 @@ function actions() {
     setLineModels: vi.fn(async () => {}),
     setActiveLine: vi.fn(async () => {}),
     setAccountAdmin: vi.fn(async () => {}),
+    setAccountCapabilities: vi.fn(async () => {}),
   }
 }
 
@@ -289,6 +296,7 @@ describe('AccountChip', () => {
             name: 'Bob',
             admin: false,
             seedAdmin: false,
+            capabilities: ['mcp'],
             activeLineId: 'core',
             memberships: [
               { lineId: 'core', modelIds: [] },
@@ -302,7 +310,7 @@ describe('AccountChip', () => {
     expect(screen.getAllByText('Alice (admin)').length).toBeGreaterThan(0)
     expect(screen.getByRole('region', { name: 'Users' })).toBeTruthy()
     expect(screen.getByText(
-      'Admins can see every session in the sidebar. Check a later user in this list to make them an admin.',
+      'Admins can see every session in the sidebar and can add, rename, or delete workspaces. Check Admin to promote a later user. Check Workspace to let that user add workspaces.',
     )).toBeTruthy()
     expect(screen.getAllByText('No business lines').length).toBeGreaterThan(0)
     expect(screen.getByText('Carol (admin)')).toBeTruthy()
@@ -315,6 +323,15 @@ describe('AccountChip', () => {
     fireEvent.click(boxes[2]!)
     await vi.waitFor(() => {
       expect(props.setAccountAdmin).toHaveBeenCalledWith('bob', true)
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Terminal' }))
+    await vi.waitFor(() => {
+      expect(props.setAccountCapabilities).toHaveBeenCalledWith('bob', ['terminal', 'mcp'])
+      expect(screen.getByRole('checkbox', { name: 'MCP' })).toHaveProperty('disabled', false)
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'MCP' }))
+    await vi.waitFor(() => {
+      expect(props.setAccountCapabilities).toHaveBeenCalledWith('bob', [])
     })
   })
 

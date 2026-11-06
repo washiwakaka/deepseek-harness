@@ -14,7 +14,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { occupancyOf } from '@deepseek-ai/dsh-experimental-identity'
-import type {} from '@deepseek-ai/dsh-api-remote-access'
+import type { RemoteAccessAction } from '@deepseek-ai/dsh-api-remote-access'
 import type {} from '@deepseek-ai/dsh-typert-protocol'
 import { createLocalIdentityAccessPolicy, type RoomOccupancy } from './access-policy.ts'
 import {
@@ -77,11 +77,38 @@ declare module '@deepseek-ai/cordis' {
     'api-session/conversation-created'(created: {
       readonly agent: Agent
       readonly peerId?: string
-    }): void
+    }): Promise<void> | void
   }
 }
 
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
+
+const SEED_ADMIN_FORWARDED_EVENTS: readonly RemoteAccessAction[] = [
+  'event:agent-preset/selected',
+  'event:commands/change',
+  'event:deepseek-account/session-expired',
+  'event:deepseek-account/model-sign-in-required',
+  'event:credentials/record-updated',
+  'event:credentials/reference-updated',
+  'event:goal/activation-changed',
+  'event:cordis/request-run',
+  'event:cordis/request-run-resolved',
+  'event:cordis/dynamic-package',
+  'event:cordis/dynamic-retract',
+  'event:cordis/inspect-query',
+  'event:cordis/inspect-query-resolved',
+  'event:llm/adapters-updated',
+  'event:llm/models-updated',
+  'event:permission-presets/catalog-changed',
+  'event:plugin-manager/changed',
+  'event:plugin-manager/install-log',
+  'event:plugin-manager/install-state',
+  'event:plugin-manager/update-state',
+  'event:plugin-market/changed',
+  'event:settings/document-updated',
+  'event:schedule/changed',
+  'event:web/providers-changed',
+]
 
 /**
  * Occupant roster used when Config omits `actors`.
@@ -198,10 +225,27 @@ export class CollaborationService extends Service {
     this.ctx.on('api-session/conversation-created', async ({ agent, peerId }) => {
       await this.claimCreatedRoot(agent.session, 'startup', peerId)
     })
+    this.ctx.on('session/created', () => {
+      this.refreshAccess()
+    })
+    this.ctx.on('domain/changed', (change) => {
+      if (change.domain !== 'workspace') return
+      this.refreshAccess()
+    })
+    this.ctx.on('agent/pre-step', async ({ agent }, next) => {
+      const decision = await next()
+      if (decision.kind === 'reject') return decision
+      const roomContext = this.roomContextMessage(agent.session)
+      if (roomContext === undefined) return decision
+      return {
+        ...decision,
+        messages: [roomContext, ...decision.messages],
+      }
+    })
     await this.hydrateOccupancy()
     this.ctx.inject(['remoteAccess'], (ctx) => {
       ctx.remoteAccess.registerPolicy('local-identity', createLocalIdentityAccessPolicy({
-        accountForBrowserSession: id => ctx.get('identity')?.accountForBrowserSession(id),
+        accountForBrowserSession: id => this.ctx.get('identity')?.accountForBrowserSession(id),
         listedSessions: () => {
           const ids: SessionId[] = []
           const seen = new Set<string>()
@@ -210,11 +254,19 @@ export class CollaborationService extends Service {
             seen.add(id)
             ids.push(id)
           }
-          for (const session of ctx.get('sessions')?.list() ?? []) add(session.id)
+          for (const session of this.ctx.get('sessions')?.list() ?? []) add(session.id)
           for (const id of this.occupancyCache.keys()) add(SessionId(id))
           return ids
         },
         occupancy: sessionId => this.occupancyOf(sessionId),
+        fullGlobalActions: () => {
+          const actions: RemoteAccessAction[] = [...SEED_ADMIN_FORWARDED_EVENTS]
+          for (const descriptor of this.ctx.get('typert')?.remotes.list() ?? []) {
+            actions.push(`${descriptor.namespace}/${descriptor.method}`)
+          }
+          return actions
+        },
+        listedWorkspaces: () => (this.ctx.get('workspaceRegistry')?.list() ?? []).map(workspace => workspace.id),
       }))
     })
     this.ctx.effect(() => async () => {
@@ -324,12 +376,13 @@ export class CollaborationService extends Service {
       ? identity.currentAccount()
       : identity.accountForBrowserSession(peerId)
     if (signed === undefined) return
+    let occupants: readonly string[] = []
     try {
-      if (this.journal.state(session).occupants.length > 0) return
+      occupants = this.journal.state(session).occupants
     } catch (projectionError) {
       void projectionError
-      return
     }
+    if (occupants.length > 0) return
     const occupancy = occupancyOf(signed)
     await this.journal.transact(session.id, async () => {
       await this.admitHumans(session, [{
@@ -416,24 +469,42 @@ export class CollaborationService extends Service {
     await this.journal.transact(session.id, async () => {
       this.assertCanAccess(session, author)
       await this.admitHumans(session, [author])
-      const state = this.journal.state(session)
-      const throughSeq = state.messages.at(-1)?.seq
-      if (throughSeq === undefined) return
-      const text = compileRoomContext(
-        state.messages,
-        throughSeq,
-        lastRoomContextSeq(session),
-      )
-      if (text === undefined) return
-      session.append('user/message', createUserMessage({
-        content: [{ type: 'text', text }],
-        source: {
-          kind: 'collaboration-room-context',
-          roomId: session.id,
-          throughSeq,
-        },
-      }), { surfaceOp: 'append' })
+      const context = this.roomContextMessage(session)
+      if (context === undefined) return
+      session.append('user/message', context, { surfaceOp: 'append' })
       await this.ctx.sessions.flush(session)
+    })
+  }
+
+  /**
+   * Build the uncompiled room-transcript message for a root room Session, if any.
+   * @param session - live room Session.
+   * @returns the `collaboration-room-context` user message, or `undefined` when nothing is uncompiled.
+   */
+  private roomContextMessage(session: Session): ReturnType<typeof createUserMessage> | undefined {
+    if (session.header.isSeeded) return undefined
+    let state: ReturnType<CollaborationJournal['state']>
+    try {
+      state = this.journal.state(session)
+    } catch (projectionError) {
+      void projectionError
+      return undefined
+    }
+    const throughSeq = state.messages.at(-1)?.seq
+    if (throughSeq === undefined) return undefined
+    const text = compileRoomContext(
+      state.messages,
+      throughSeq,
+      lastRoomContextSeq(session),
+    )
+    if (text === undefined) return undefined
+    return createUserMessage({
+      content: [{ type: 'text', text }],
+      source: {
+        kind: 'collaboration-room-context',
+        roomId: session.id,
+        throughSeq,
+      },
     })
   }
 

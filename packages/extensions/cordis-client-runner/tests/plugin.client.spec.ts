@@ -69,7 +69,7 @@ interface Bench {
 }
 
 /** Mount the browser half over a module table and a loader standing on real fibers. */
-async function boot(ctx = new Context()): Promise<Bench> {
+async function boot(ctx = new Context(), options: { inspectDenied?: boolean } = {}): Promise<Bench> {
   await ctx.plugin(SlotRegistry)
   const factories = new Map<string, () => unknown>()
   const fibers = new Map<string, { fiber: unknown }>()
@@ -112,7 +112,12 @@ async function boot(ctx = new Context()): Promise<Bench> {
   // its own failures into the error branch, and only an assembly fault rejects.
   const answered = <T>(value: T): Promise<{ ok: true; value: T }> => Promise.resolve({ ok: true as const, value })
   const namespace = {
-    syncInspectManifest: () => answered(null),
+    syncInspectManifest: () => options.inspectDenied
+      ? Promise.resolve({
+        ok: false as const,
+        error: { code: 'remote-access/denied' as const, message: 'access denied' },
+      })
+      : answered(null),
     resolveInspectQuery: () => answered({ accepted: true }),
     runHostHalf: () => answered({
       ok: true, pluginId: PLUGIN, packageId: PACKAGE, pluginRunId: RUN, waitingFor: [], startedHere: true,
@@ -234,6 +239,19 @@ describe('browser half', () => {
         if (moduleLoader) Object.defineProperty(globalThis, '__ModuleLoader__', moduleLoader)
         else Reflect.deleteProperty(globalThis, '__ModuleLoader__')
       }
+    }
+  })
+
+  it('does not log when Host refuses inspect sync as remote-access/denied', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const bench = await boot(new Context(), { inspectDenied: true })
+      await bench.settle()
+      const complaints = logged.mock.calls.filter(call => String(call[0]).includes('syncing inspect providers'))
+      expect(complaints).toHaveLength(0)
+      await bench.dispose()
+    } finally {
+      logged.mockRestore()
     }
   })
 

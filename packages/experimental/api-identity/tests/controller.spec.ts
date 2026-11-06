@@ -100,6 +100,10 @@ describe('identity Remote', () => {
       id: 'bob',
       admin: true,
     })
+    expect(await api.setAccountCapabilities('bob', ['workspace', 'cordis'], abort.signal)).toMatchObject({
+      id: 'bob',
+      capabilities: ['workspace', 'cordis'],
+    })
     expect(await api.setAccountAdmin('bob', false, abort.signal)).toMatchObject({
       admin: false,
     })
@@ -111,6 +115,12 @@ describe('identity Remote', () => {
     }
     api.logout()
     expect(await api.loginPassword('bob', 'password1', abort.signal)).toMatchObject({ admin: false })
+    try {
+      await api.setAccountCapabilities('alice', ['mcp'], abort.signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'identity/unauthorized' })
+    }
     try {
       api.listAccounts()
       expect.unreachable()

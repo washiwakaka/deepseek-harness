@@ -62,6 +62,12 @@ export interface IdentityMembership {
   readonly modelIds: readonly string[]
 }
 
+/** Host feature groups a seed admin may grant to an account. */
+export const IDENTITY_CAPABILITIES = ['workspace', 'terminal', 'mcp', 'cordis'] as const
+
+/** One toggleable Host feature group on an account. */
+export type IdentityCapability = (typeof IDENTITY_CAPABILITIES)[number]
+
 /** Signed-in or listed account, without secrets. */
 export interface IdentityAccountView {
   readonly id: AccountId
@@ -70,6 +76,8 @@ export interface IdentityAccountView {
   readonly admin: boolean
   /** True when Config `admins` named this username; it cannot be demoted. */
   readonly seedAdmin: boolean
+  /** Host feature groups granted to this account (`workspace`, `terminal`, `mcp`, `cordis`). */
+  readonly capabilities?: readonly IdentityCapability[]
   /** Business line used for `@` models and room group; omitted when none is active. */
   readonly activeLineId?: string
   /** Independent per-line memberships. */

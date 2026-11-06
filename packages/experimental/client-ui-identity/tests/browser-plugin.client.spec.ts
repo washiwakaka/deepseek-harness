@@ -8,6 +8,7 @@ import { apply as nodeApply } from '../src/index.ts'
 import { AccountChip, type AccountChipInjected } from '../src/client/AccountChip.tsx'
 import { mountIdentityUi } from '../src/client/mount.ts'
 import { IdentitySessionStore } from '../src/client/session.ts'
+import type { IdentityAccountView } from '@deepseek-ai/dsh-experimental-api-identity/types'
 
 const REMOTE: TypertRemoteContribution = { package: '@deepseek-ai/dsh-experimental-api-identity', descriptors: [] }
 
@@ -82,6 +83,10 @@ async function bench() {
       ok: true as const,
       value: { id: 'bob', name: 'Bob', admin: true, activeLineId: null, memberships: [] },
     })),
+    setAccountCapabilities: vi.fn(async () => ({
+      ok: true as const,
+      value: { id: 'bob', name: 'Bob', admin: false, capabilities: ['terminal'], activeLineId: null, memberships: [] },
+    })),
   })
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry).await()
@@ -138,6 +143,130 @@ describe('identity browser plugin', () => {
     expect(b.unmount).toHaveBeenCalled()
   })
 
+  it('refreshes the Session list when the signed-in account changes', async () => {
+    const b = await bench()
+    const refresh = vi.fn(async () => {})
+    b.ctx.provide('sessions', { refresh })
+    const remote = b.ctx.get('remote.identity') as {
+      status: ReturnType<typeof vi.fn>
+      loginPassword: ReturnType<typeof vi.fn>
+      logout: ReturnType<typeof vi.fn>
+      joinLine: ReturnType<typeof vi.fn>
+    }
+    const alice: IdentityAccountView = {
+      id: 'alice',
+      name: 'Alice',
+      admin: true,
+      seedAdmin: false,
+      activeLineId: null,
+      memberships: [],
+    }
+    let current: IdentityAccountView | null = null
+    remote.status.mockImplementation(async () => ({
+      ok: true as const,
+      value: {
+        current,
+        methods: [{ id: 'password', kind: 'password' as const }],
+        lines: [],
+        accounts: [],
+      },
+    }))
+    remote.loginPassword.mockImplementation(async () => {
+      current = alice
+      return { ok: true as const, value: alice }
+    })
+    remote.joinLine.mockImplementation(async () => {
+      current = { ...alice, activeLineId: 'core', memberships: [{ lineId: 'core', modelIds: [] }] }
+      return { ok: true as const, value: current }
+    })
+    remote.logout.mockImplementation(async () => {
+      current = null
+      return { ok: true as const, value: undefined }
+    })
+    const dispose = await mountIdentityUi(b.ctx, REMOTE)
+    await vi.waitFor(() => {
+      expect(b.ctx.identitySession.getSnapshot().methods).toHaveLength(1)
+    })
+    const entry = b.ctx.slots.entries('sidebar.account')[0]
+    const injected = entry?.inject?.() as never as AccountChipInjected
+    expect(refresh).not.toHaveBeenCalled()
+    await injected.login('alice', 'password1')
+    await vi.waitFor(() => {
+      expect(refresh).toHaveBeenCalledTimes(1)
+    })
+    await injected.joinLine('core')
+    expect(refresh).toHaveBeenCalledTimes(1)
+    await injected.logout()
+    await vi.waitFor(() => {
+      expect(refresh).toHaveBeenCalledTimes(2)
+    })
+    await dispose()
+  })
+
+  it('keeps sign-in when Session list refresh fails', async () => {
+    const b = await bench()
+    const refresh = vi.fn(async () => {
+      throw new Error('list')
+    })
+    b.ctx.provide('sessions', { refresh })
+    const remote = b.ctx.get('remote.identity') as {
+      status: ReturnType<typeof vi.fn>
+      loginPassword: ReturnType<typeof vi.fn>
+    }
+    const alice = { id: 'alice', name: 'Alice', admin: true, seedAdmin: false, activeLineId: null, memberships: [] }
+    let current: typeof alice | null = null
+    remote.status.mockImplementation(async () => ({
+      ok: true as const,
+      value: {
+        current,
+        methods: [{ id: 'password', kind: 'password' as const }],
+        lines: [],
+        accounts: [],
+      },
+    }))
+    remote.loginPassword.mockImplementation(async () => {
+      current = alice
+      return { ok: true as const, value: alice }
+    })
+    const dispose = await mountIdentityUi(b.ctx, REMOTE)
+    const entry = b.ctx.slots.entries('sidebar.account')[0]
+    const injected = entry?.inject?.() as never as AccountChipInjected
+    await injected.login('alice', 'password1')
+    expect(b.ctx.identitySession.getSnapshot().current?.id).toBe('alice')
+    await vi.waitFor(() => {
+      expect(refresh).toHaveBeenCalled()
+    })
+    await dispose()
+  })
+
+  it('does not throw when the Session layer is absent at sign-in', async () => {
+    const b = await bench()
+    const remote = b.ctx.get('remote.identity') as {
+      status: ReturnType<typeof vi.fn>
+      loginPassword: ReturnType<typeof vi.fn>
+    }
+    const alice = { id: 'alice', name: 'Alice', admin: true, seedAdmin: false, activeLineId: null, memberships: [] }
+    remote.status
+      .mockResolvedValueOnce({
+        ok: true as const,
+        value: { current: null, methods: [{ id: 'password', kind: 'password' as const }], lines: [], accounts: [] },
+      })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        value: { current: alice, methods: [{ id: 'password', kind: 'password' as const }], lines: [], accounts: [] },
+      })
+    remote.loginPassword.mockResolvedValueOnce({ ok: true as const, value: alice })
+    const dispose = await mountIdentityUi(b.ctx, REMOTE)
+    await vi.waitFor(() => {
+      expect(b.ctx.identitySession.getSnapshot().methods).toHaveLength(1)
+    })
+    const entry = b.ctx.slots.entries('sidebar.account')[0]
+    const injected = entry?.inject?.() as never as AccountChipInjected
+    await injected.login('alice', 'password1')
+    expect(b.ctx.identitySession.getSnapshot().current?.id).toBe('alice')
+    await dispose()
+  })
+
   it('exports apply that mounts the generated remote', async () => {
     const ctx = new Context()
     class Remote extends Service {
@@ -175,6 +304,7 @@ describe('identity browser plugin', () => {
       setLineModels: ReturnType<typeof vi.fn>
       setActiveLine: ReturnType<typeof vi.fn>
       setAccountAdmin: ReturnType<typeof vi.fn>
+      setAccountCapabilities: ReturnType<typeof vi.fn>
       listCatalogModels: ReturnType<typeof vi.fn>
     }
     let statusCalls = 0
@@ -213,6 +343,9 @@ describe('identity browser plugin', () => {
     await expect(injected.setActiveLine('core')).rejects.toThrow('active')
     remote.setAccountAdmin.mockResolvedValueOnce({ ok: false as const, error: new Error('admin') })
     await expect(injected.setAccountAdmin('bob', true)).rejects.toThrow('admin')
+    await injected.setAccountCapabilities?.('bob', ['terminal'])
+    remote.setAccountCapabilities.mockResolvedValueOnce({ ok: false as const, error: new Error('caps') })
+    await expect(injected.setAccountCapabilities?.('bob', ['terminal'])).rejects.toThrow('caps')
     remote.registerPassword.mockResolvedValueOnce({ ok: false as const, error: new Error('reg') })
     await expect(injected.register('alice', 'password1', 'Alice')).rejects.toThrow('reg')
     remote.registerPassword.mockResolvedValueOnce({
@@ -243,6 +376,31 @@ describe('identity browser plugin', () => {
     const dispose = await mountIdentityUi(b.ctx, REMOTE)
     await dispose()
     await new Promise((resolve) => { setTimeout(resolve, 40) })
+  })
+
+  it('ignores a late status success after dispose', async () => {
+    const b = await bench()
+    const remote = b.ctx.get('remote.identity') as {
+      status: ReturnType<typeof vi.fn>
+      listCatalogModels: ReturnType<typeof vi.fn>
+    }
+    const status = Promise.withResolvers<{
+      ok: true
+      value: { current: null; methods: never[]; lines: never[]; accounts: never[] }
+    }>()
+    const catalog = Promise.withResolvers<{ ok: true; value: never[] }>()
+    remote.status.mockReturnValue(status.promise)
+    remote.listCatalogModels.mockReturnValue(catalog.promise)
+    const dispose = await mountIdentityUi(b.ctx, REMOTE)
+    await dispose()
+    status.resolve({
+      ok: true as const,
+      value: { current: null, methods: [], lines: [], accounts: [] },
+    })
+    catalog.resolve({ ok: true as const, value: [] })
+    await status.promise
+    await catalog.promise
+    await new Promise(resolve => setTimeout(resolve, 10))
   })
 
   it('unmounts the Remote when slot inject fails', async () => {

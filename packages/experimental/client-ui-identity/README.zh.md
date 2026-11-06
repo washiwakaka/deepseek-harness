@@ -35,7 +35,7 @@ Client 导出挂载 identity Remote，并占用 `sidebar.account` 上的账号�
 <details>
 <summary>维护者信息 — 点击展开</summary>
 
-`status()` 和 `listCatalogModels` 写入 `IdentitySessionStore`。密码注册成功后调用 `loginPassword`。已登录面板调用 `joinLine`、`leaveLine`、`setLineModels`、`setActiveLine`。当 `current.admin` 为真时，面板还会显示新建业务线表单、列出 `status().accounts`，并调用 `createLine` 和 `setAccountAdmin`。`seedAdmin` 为真的账号，管理员勾选框禁用。`kind: 'oauth'` 的方式在 Host 方法和 Remote 就绪前画成禁用的「即将支持」按钮。释放插件 fiber 会去掉槽位和 Remote 挂载。
+`status()` 和 `listCatalogModels` 写入 `IdentitySessionStore`。密码注册成功后调用 `loginPassword`。已登录面板调用 `joinLine`、`leaveLine`、`setLineModels`、`setActiveLine`。当 `current.admin` 为真时，面板还会显示新建业务线表单、列出 `status().accounts`，并调用 `createLine` 和 `setAccountAdmin`。`seedAdmin` 为真的账号，管理员勾选框禁用，并可勾选后续用户的工作区等 Host 能力。`kind: 'oauth'` 的方式在 Host 方法和 Remote 就绪前画成禁用的「即将支持」按钮。`current.id` 变化时调用 `sessions.refresh()`，侧栏 Session 列表随已登录账号更新，登出后同样刷新。释放插件 fiber 会去掉槽位和 Remote 挂载。
 
 </details>
 

@@ -40,11 +40,11 @@ async function setup() {
   return { ctx, room }
 }
 
-function caller(ctx: Context, id: string): Context {
+function caller(ctx: Context, id: PeerId): Context {
   const peer = {
-    id: id as PeerId,
+    id,
     ctx,
-    principal: { kind: 'local-identity' as const, browserSessionId: id as PeerId },
+    principal: { kind: 'local-identity' as const, browserSessionId: id },
     interactions: 'answer' as const,
     signal: new AbortController().signal,
     dispose: () => Promise.resolve(),
@@ -107,7 +107,7 @@ describe('collaboration identity posts', () => {
   it('stamps the creating Remote Peer when conversation-created carries its id', async () => {
     const { ctx } = await setup()
     await ctx.identity.registerPassword('alice', 'password1', 'Alice')
-    const alice = caller(ctx, 'peer-alice')
+    const alice = caller(ctx, 'peer-alice' as PeerId)
     await alice.identity.loginPassword('alice', 'password1')
     expect(ctx.identity.currentAccount()).toBeUndefined()
     const created = await ctx.agentLoop.create(SessionId('remote-owned'), { provider: 'mock', model: 'mock' })
@@ -120,7 +120,7 @@ describe('collaboration identity posts', () => {
     const { ctx } = await setup()
     await ctx.plugin(RemoteAccessService)
     await ctx.identity.registerPassword('alice', 'password1', 'Alice')
-    const alice = caller(ctx, 'peer-alice')
+    const alice = caller(ctx, 'peer-alice' as PeerId)
     await alice.identity.loginPassword('alice', 'password1')
     const handle = await ctx.agents.create({
       sessionId: SessionId('cold-owned'),
@@ -130,10 +130,59 @@ describe('collaboration identity posts', () => {
     const sessionId = handle.agent.session.id
     await handle.dispose()
     expect(ctx.sessions.get(sessionId)).toBeUndefined()
+    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
     expect(ctx.remoteAccess.decide({
-      principal: { kind: 'local-identity', browserSessionId: 'peer-alice' as PeerId },
+      principal: alicePrincipal,
       action: 'session/list',
       resources: [{ kind: 'session', id: sessionId }],
+    }).kind).toBe('allow')
+  })
+
+  it('authorizes session/create on a workspace resource and invalidates ACL on workspace/session changes', async () => {
+    const { ctx } = await setup()
+    ctx.provide('workspaceRegistry', {
+      list: () => [{ id: 'ws-alpha', sessionIds: [] }],
+    })
+    await ctx.plugin(RemoteAccessService)
+    await ctx.identity.registerPassword('alice', 'password1', 'Alice')
+    const alice = caller(ctx, 'peer-alice' as PeerId)
+    await alice.identity.loginPassword('alice', 'password1')
+    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    expect(ctx.remoteAccess.decide({
+      principal: alicePrincipal,
+      action: 'session/create',
+      resources: [{ kind: 'workspace', id: 'ws-alpha' as never }],
+    }).kind).toBe('allow')
+    const unseeded = ctx.sessions.create(SessionId('unseeded-blank'))
+    expect(ctx.remoteAccess.decide({
+      principal: alicePrincipal,
+      action: 'collaboration/postMessage',
+      resources: [{ kind: 'session', id: unseeded.id }],
+    }).kind).toBe('allow')
+    ctx.emit('domain/changed', { domain: 'other', table: '', key: '', operation: 'put', value: {} } as never)
+    ctx.emit('domain/changed', { domain: 'workspace', table: '', key: '', operation: 'put', value: {} } as never)
+    await ctx.identity.registerPassword('root', 'password1', 'Root')
+    const rootCtx = new Context()
+    contexts.push(rootCtx)
+    new MemoryCredentials(rootCtx)
+    await mountAgentLoopTestDependencies(rootCtx)
+    const rootStorage = mkdtempSync(join(tmpdir(), 'dsh-collab-seed-'))
+    roots.push(rootStorage)
+    await rootCtx.plugin(JsonlSessionPersistence, { root: rootStorage })
+    await rootCtx.plugin(AgentLoop, { agents: [] })
+    await rootCtx.plugin(IdentityService, { admins: ['root'] })
+    rootCtx.provide('typert', {
+      remotes: { list: () => [{ namespace: 'settings', method: 'describe' }] },
+    })
+    await rootCtx.plugin(CollaborationService, { actors: [] })
+    await rootCtx.plugin(RemoteAccessService)
+    await rootCtx.identity.registerPassword('root', 'password1', 'Root')
+    const rootPeer = caller(rootCtx, 'peer-root' as PeerId)
+    await rootPeer.identity.loginPassword('root', 'password1')
+    expect(rootCtx.remoteAccess.decide({
+      principal: { kind: 'local-identity', browserSessionId: 'peer-root' },
+      action: 'settings/describe',
+      resources: [{ kind: 'global' }],
     }).kind).toBe('allow')
   })
 

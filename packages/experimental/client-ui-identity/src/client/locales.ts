@@ -43,7 +43,11 @@ export const zh = {
   'users.empty': '还没有用户',
   'users.none': '未加入业务线',
   'users.admin': '管理员',
-  'sessions.hint': '管理员可在侧栏看到全部会话。在名单里勾选即可把后续用户设为管理员。',
+  'cap.workspace': '工作区',
+  'cap.terminal': '终端',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': '管理员可在侧栏看到全部会话，并可新增、重命名或删除工作区。勾选管理员可提升后续用户；勾选工作区可把新增工作区交给该用户。',
 } satisfies Record<string, string>
 
 /** Local-identity locale key union. */
@@ -89,7 +93,11 @@ export const en = {
   'users.empty': 'No users yet',
   'users.none': 'No business lines',
   'users.admin': 'Admin',
-  'sessions.hint': 'Admins can see every session in the sidebar. Check a later user in this list to make them an admin.',
+  'cap.workspace': 'Workspace',
+  'cap.terminal': 'Terminal',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': 'Admins can see every session in the sidebar and can add, rename, or delete workspaces. Check Admin to promote a later user. Check Workspace to let that user add workspaces.',
 } satisfies Record<IdentityUiKey, string>
 
 /** Japanese copy, checked against the English keys. */
@@ -132,7 +140,11 @@ export const ja = {
   'users.empty': 'ユーザーはまだいません',
   'users.none': '業務ライン未参加',
   'users.admin': '管理者',
-  'sessions.hint': '管理者はサイドバーで全てのセッションを見られます。この一覧で後から登録したユーザーに管理者を付けられます。',
+  'cap.workspace': 'ワークスペース',
+  'cap.terminal': 'ターミナル',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': '管理者はサイドバーで全てのセッションを見られ、ワークスペースの追加・名前変更・削除ができます。管理者にチェックすると後のユーザーを昇格できます。ワークスペースにチェックするとそのユーザーがワークスペースを追加できます。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish copy, checked against the English keys. */
@@ -175,7 +187,11 @@ export const es = {
   'users.empty': 'Aún no hay usuarios',
   'users.none': 'Sin líneas de negocio',
   'users.admin': 'Admin',
-  'sessions.hint': 'Los administradores ven todas las sesiones en la barra lateral. Marca a un usuario posterior en esta lista para hacerlo admin.',
+  'cap.workspace': 'Espacio de trabajo',
+  'cap.terminal': 'Terminal',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': 'Los administradores ven todas las sesiones en la barra lateral y pueden añadir, renombrar o eliminar espacios de trabajo. Marca Admin para promover a un usuario posterior. Marca Workspace para que ese usuario pueda añadir espacios de trabajo.',
 } satisfies Record<keyof typeof en, string>
 
 /** French copy, checked against the English keys. */
@@ -218,7 +234,11 @@ export const fr = {
   'users.empty': 'Aucun utilisateur',
   'users.none': 'Aucune ligne métier',
   'users.admin': 'Admin',
-  'sessions.hint': 'Les administrateurs voient toutes les sessions dans la barre latérale. Cochez un utilisateur ultérieur dans cette liste pour en faire un admin.',
+  'cap.workspace': 'Espace de travail',
+  'cap.terminal': 'Terminal',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': 'Les administrateurs voient toutes les sessions dans la barre latérale et peuvent ajouter, renommer ou supprimer des espaces de travail. Cochez Admin pour promouvoir un utilisateur ultérieur. Cochez Workspace pour lui permettre d’ajouter des espaces de travail.',
 } satisfies Record<keyof typeof en, string>
 
 /** German copy, checked against the English keys. */
@@ -261,7 +281,11 @@ export const de = {
   'users.empty': 'Noch keine Benutzer',
   'users.none': 'Keine Geschäftslinien',
   'users.admin': 'Admin',
-  'sessions.hint': 'Admins sehen alle Sitzungen in der Seitenleiste. Haken Sie in dieser Liste einen späteren Benutzer als Admin an.',
+  'cap.workspace': 'Arbeitsbereich',
+  'cap.terminal': 'Terminal',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': 'Admins sehen alle Sitzungen in der Seitenleiste und können Arbeitsbereiche hinzufügen, umbenennen oder löschen. Haken Sie Admin an, um einen späteren Benutzer zu befördern. Haken Sie Workspace an, damit dieser Benutzer Arbeitsbereiche hinzufügen kann.',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian copy, checked against the English keys. */
@@ -304,7 +328,11 @@ export const ru = {
   'users.empty': 'Пользователей пока нет',
   'users.none': 'Без бизнес-линий',
   'users.admin': 'Админ',
-  'sessions.hint': 'Администратор видит все сессии в боковой панели. Отметьте в этом списке более позднего пользователя, чтобы сделать его админом.',
+  'cap.workspace': 'Рабочая область',
+  'cap.terminal': 'Терминал',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': 'Администратор видит все сессии в боковой панели и может добавлять, переименовывать и удалять рабочие области. Отметьте Admin, чтобы повысить более позднего пользователя. Отметьте Workspace, чтобы этот пользователь мог добавлять рабочие области.',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese copy, checked against the English keys. */
@@ -347,5 +375,9 @@ export const pt = {
   'users.empty': 'Ainda não há usuários',
   'users.none': 'Sem linhas de negócio',
   'users.admin': 'Admin',
-  'sessions.hint': 'Administradores veem todas as sessões na barra lateral. Marque um usuário posterior nesta lista para torná-lo admin.',
+  'cap.workspace': 'Espaço de trabalho',
+  'cap.terminal': 'Terminal',
+  'cap.mcp': 'MCP',
+  'cap.cordis': 'Cordis',
+  'sessions.hint': 'Administradores veem todas as sessões na barra lateral e podem adicionar, renomear ou excluir espaços de trabalho. Marque Admin para promover um usuário posterior. Marque Workspace para que esse usuário possa adicionar espaços de trabalho.',
 } satisfies Record<keyof typeof en, string>

@@ -112,16 +112,35 @@ describe('local identity accounts', () => {
     await expect(ctx.identity.setAccountAdmin('missing', true)).rejects.toMatchObject({
       code: 'IDENTITY_INVALID_ARGUMENT',
     })
-    const promoted = await ctx.identity.setAccountAdmin('bob', true)
+    const carol = caller(ctx, 'peer-carol')
+    const bob = caller(ctx, 'peer-bob')
+    await carol.identity.loginPassword('carol', 'password1')
+    await bob.identity.loginPassword('bob', 'password1')
+    const promoted = await carol.identity.setAccountAdmin('bob', true)
     expect(promoted.admin).toBe(true)
-    await expect(ctx.identity.setAccountAdmin('carol', false)).rejects.toMatchObject({
+    await expect(bob.identity.setAccountAdmin('carol', false)).rejects.toMatchObject({
       code: 'IDENTITY_INVALID_ARGUMENT',
     })
-    const demoted = await ctx.identity.setAccountAdmin('bob', false)
+    const granted = await carol.identity.setAccountCapabilities('bob', ['workspace', 'terminal', 'workspace'])
+    expect(granted.capabilities).toEqual(['workspace', 'terminal'])
+    const cleared = await carol.identity.setAccountCapabilities('bob', [])
+    expect(cleared.capabilities).toBeUndefined()
+    await expect(carol.identity.setAccountCapabilities('missing', ['mcp'])).rejects.toMatchObject({
+      code: 'IDENTITY_INVALID_ARGUMENT',
+    })
+    await expect(carol.identity.setAccountCapabilities('bob', ['bad' as never])).rejects.toMatchObject({
+      code: 'IDENTITY_INVALID_ARGUMENT',
+    })
+    await expect(bob.identity.setAccountCapabilities('alice', ['mcp'])).rejects.toMatchObject({
+      code: 'IDENTITY_UNAUTHORIZED',
+    })
+    await expect(carol.identity.setAccountAdmin('carol', false)).rejects.toMatchObject({
+      code: 'IDENTITY_INVALID_ARGUMENT',
+    })
+    const demoted = await carol.identity.setAccountAdmin('bob', false)
     expect(demoted.admin).toBe(false)
-    await ctx.identity.loginPassword('bob', 'password1')
-    expect(ctx.identity.currentAccount()?.admin).toBe(false)
-    await expect(ctx.identity.setAccountAdmin('alice', true)).rejects.toMatchObject({
+    expect(bob.identity.currentAccount()?.admin).toBe(false)
+    await expect(bob.identity.setAccountAdmin('alice', true)).rejects.toMatchObject({
       code: 'IDENTITY_UNAUTHORIZED',
     })
   })

@@ -278,9 +278,9 @@ export class SessionCommandController {
     }
     const childId = brandString<SessionId>(`session-${randomUUID()}`)
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
-    try {
+    const created = await (async () => {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-      await this.ctx.agents.create({
+      return await this.ctx.agents.create({
         sessionId: childId,
         seed,
         inheritedEventCount: SessionLogOffset(boundary + 1),
@@ -294,13 +294,13 @@ export class SessionCommandController {
         agentOptions: { provider, model },
         setup: composition.setup,
       })
-    } catch (error) {
+    })().catch((error: unknown) => {
       throw new RemoteError(
         'gateway/internal',
         `failed to fork session "${request.sessionId}": ${String(error)}`,
         {},
       )
-    }
+    })
     if (workspace !== undefined) {
       try {
         await workspace.attachSession(childId)
@@ -312,6 +312,10 @@ export class SessionCommandController {
         )
       }
     }
+    await this.ctx.serial('api-session/conversation-created', {
+      agent: created.agent,
+      ...(this.ctx.invocation === undefined ? {} : { peerId: this.ctx.invocation.peer.id }),
+    })
     return { sessionId: childId }
   }
 
@@ -616,6 +620,6 @@ declare module '@deepseek-ai/cordis' {
     'api-session/conversation-created'(created: {
       readonly agent: Agent
       readonly peerId?: string
-    }): void
+    }): Promise<void> | void
   }
 }

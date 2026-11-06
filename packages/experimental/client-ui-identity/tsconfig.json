@@ -8,6 +8,7 @@
   "references": [
     { "path": "../../../vendor/cordis" },
     { "path": "../../api/remotes/tsconfig.client.json" },
+    { "path": "../../api/session-controller/tsconfig.client.json" },
     { "path": "../../typert/protocol" },
     { "path": "../api-identity" },
     { "path": "../../client/locale/tsconfig.client.json" },
