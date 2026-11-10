@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-10-collaboration-room-lifecycle.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-10-collaboration-room-lifecycle.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-10-collaboration-room-lifecycle:
+  en: bcfe68a741a05124
+  zh: 7320a0045b32f250
+/2026-11-10-collaboration-room-lifecycle/summary:
+  en: bbd30b97bdcf705c
+  zh: 5ebee95f482d31d4
+/2026-11-10-collaboration-room-lifecycle/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-10-collaboration-room-lifecycle/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-10-collaboration-room-lifecycle/compatibility:
+  en: 64e1e81e862e46e4
+  zh: b787f21a814dfe9b
+/2026-11-10-collaboration-room-lifecycle/verification:
+  en: 452b74f3bcac901b
+  zh: d5cd4a12f059526f
+/2026-11-10-collaboration-room-lifecycle/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269
