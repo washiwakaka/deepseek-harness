@@ -1,0 +1,36 @@
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .action:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.action:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.failure {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+}

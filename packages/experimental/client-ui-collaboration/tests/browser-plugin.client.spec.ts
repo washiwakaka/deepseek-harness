@@ -11,6 +11,7 @@ import { apply as nodeApply } from '../src/index.ts'
 import { RoomBadge } from '../src/client/RoomBadge.tsx'
 import { RoomMessageView } from '../src/client/RoomMessageView.tsx'
 import { RoomPostButton } from '../src/client/RoomPostButton.tsx'
+import { BranchPublishAction } from '../src/client/BranchPublishAction.tsx'
 import { RoomThinkingStatus } from '../src/client/RoomThinkingStatus.tsx'
 import { RoomThinkingView } from '../src/client/RoomThinkingView.tsx'
 import { collaborationMessageDefinition } from '../src/client/message-definition.ts'
@@ -71,6 +72,12 @@ async function bench() {
   }))
   const sendWithRoom = vi.fn(async () => ({ ok: true as const }))
   const publish = vi.fn(async () => ({ ok: true as const }))
+  const branchInfo = vi.fn(async () => ({
+    ok: true as const,
+    value: { roomId: 'sess-1', actorId: 'model-a' },
+  }))
+  const leaveRoom = vi.fn(async () => ({ ok: true as const }))
+  const removeOccupantRemote = vi.fn(async () => ({ ok: true as const }))
   const openSession = vi.fn()
   const filterSessions = vi.fn((visible: (id: SessionId, list: {
     ids: string[]
@@ -91,6 +98,9 @@ async function bench() {
     postMessage,
     sendWithRoom,
     publish,
+    branchInfo,
+    leaveRoom,
+    removeOccupant: removeOccupantRemote,
     claimRoom,
   })
   const registered: unknown[] = []
@@ -119,6 +129,7 @@ async function bench() {
       'conversation.chat.node': { kind: 'keyed', scope: 'session' },
       'conversation.input.right': { kind: 'list', scope: 'session' },
       'conversation.composer.dock': { kind: 'list', scope: 'session' },
+      'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
     },
   } as never, () => null)
   let dispose: (() => Promise<void>) | undefined
@@ -132,7 +143,8 @@ async function bench() {
   if (dispose === undefined) throw new Error('mount did not return a disposer')
   return {
     ctx, fiber, registered, dispose, unmount, listActors, listMentionModels,
-    postMessage, sendWithRoom, publish, openSession, mentionSource: () => mentionSource,
+    postMessage, sendWithRoom, publish, branchInfo, leaveRoom,
+    removeOccupantRemote, openSession, mentionSource: () => mentionSource,
   }
 }
 
@@ -203,6 +215,122 @@ describe('collaboration-room browser plugin', () => {
       .find(entry => entry.component === RoomPostButton)).toBeUndefined()
   })
 
+  it('routes an ordinary Send with a model chip to the room post', async () => {
+    const b = await bench()
+    const badge = b.ctx.slots.entries('conversation.header.leading')
+      .find(entry => entry.component === RoomBadge)
+    const injected = badge?.inject?.() as { hooks: { actors: { getSnapshot: () => { mentionModels: unknown[] } } } }
+    await vi.waitFor(() => {
+      expect(injected.hooks.actors.getSnapshot().mentionModels).toHaveLength(1)
+    })
+    const settled = await b.ctx.serial('conversation/before-send', {
+      sessionId: 'sess-1',
+      text: 'qwen-token-plan/qwen-plus look',
+      draft: '@Qwen-Plus look',
+      occurrences: [{ source: 'models', ref: 'qwen-token-plan/qwen-plus' }],
+      attachmentCount: 0,
+      mode: 'queue',
+    } as never)
+    expect(settled).toEqual({ kind: 'success' })
+    expect(b.postMessage).toHaveBeenCalledWith('sess-1', {
+      actorId: 'alice',
+      text: '@Qwen-Plus look',
+      mentions: ['qwen-token-plan/qwen-plus'],
+    })
+    const passthrough = await b.ctx.serial('conversation/before-send', {
+      sessionId: 'sess-1',
+      text: 'plain hello',
+      draft: 'plain hello',
+      occurrences: [],
+      attachmentCount: 0,
+      mode: 'queue',
+    } as never)
+    expect(passthrough).toBeUndefined()
+    await b.dispose()
+  })
+
+  it('passes attachments, remembered branches, and blank drafts through before-send', async () => {
+    const b = await bench()
+    const send = (request: Record<string, unknown>) => b.ctx.serial('conversation/before-send', request as never)
+    const withChip = {
+      sessionId: 'sess-1',
+      text: 'qwen-token-plan/qwen-plus look',
+      draft: '@Qwen-Plus look',
+      occurrences: [{ source: 'models', ref: 'qwen-token-plan/qwen-plus' }],
+      mode: 'queue',
+    }
+    await expect(send({ ...withChip, attachmentCount: 2 })).resolves.toBeUndefined()
+    expect(b.postMessage).not.toHaveBeenCalled()
+    await expect(send({ ...withChip, attachmentCount: 0, draft: '   ', text: '   ' })).resolves.toBeUndefined()
+    expect(b.postMessage).not.toHaveBeenCalled()
+    await expect(send({ ...withChip, attachmentCount: 0 })).resolves.toEqual({ kind: 'success' })
+    expect(b.postMessage).toHaveBeenCalledTimes(1)
+    // The post remembered child-a as a branch; a Send there keeps the ordinary path.
+    await expect(send({ ...withChip, sessionId: 'child-a', attachmentCount: 0 })).resolves.toBeUndefined()
+    expect(b.postMessage).toHaveBeenCalledTimes(1)
+    b.postMessage.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: new RemoteError('collaboration/failed', 'down', { reason: 'down' }),
+    }))
+    await expect(send({ ...withChip, attachmentCount: 0 })).resolves.toEqual({ kind: 'error' })
+    await b.dispose()
+  })
+
+  it('wires branch info, member removal, leave, and per-reply publish through the mount', async () => {
+    const b = await bench()
+    const badge = b.ctx.slots.entries('conversation.header.leading')
+      .find(entry => entry.component === RoomBadge)
+    const badgeInjected = badge?.inject?.() as {
+      selectHuman: (id: string) => void
+      leave: (sessionId: string) => Promise<void>
+      removeOccupant: (sessionId: string, targetId: string) => Promise<void>
+      hooks: { actors: { getSnapshot: () => { selectedHumanId?: string } } }
+    }
+    await vi.waitFor(() => {
+      expect(badgeInjected.hooks.actors.getSnapshot().selectedHumanId).toBe('alice')
+    })
+    await badgeInjected.leave('sess-1')
+    expect(b.leaveRoom).toHaveBeenCalledWith('sess-1', 'alice')
+    await badgeInjected.removeOccupant('sess-1', 'bob')
+    expect(b.removeOccupantRemote).toHaveBeenCalledWith('sess-1', 'alice', 'bob')
+    const store = badgeInjected.hooks.actors as unknown as { clearHuman: () => void }
+    store.clearHuman()
+    await badgeInjected.leave('sess-1')
+    expect(b.leaveRoom).toHaveBeenCalledTimes(1)
+    badgeInjected.selectHuman('alice')
+
+    const post = b.ctx.slots.entries('conversation.input.right')
+      .find(entry => entry.component === RoomPostButton)
+    const postInjected = post?.inject?.('sess-1' as SessionId as never) as {
+      branchInfo: (sessionId: string) => Promise<boolean>
+      post: (text: string, mentions?: readonly string[]) => Promise<string | undefined>
+      promptWithRoom: (text: string, mentions?: readonly string[]) => Promise<string | undefined>
+    }
+    await expect(postInjected.branchInfo('sess-1')).resolves.toBe(true)
+    b.postMessage.mockImplementationOnce(async () => ({
+      ok: true as const,
+      value: { childSessionIds: [], failedActorIds: ['model-a'] },
+    }))
+    await expect(postInjected.post('hi', ['model-a'])).resolves.toContain('model-a')
+    b.postMessage.mockImplementationOnce(async () => ({
+      ok: true as const,
+      value: { childSessionIds: [], failedActorIds: ['model-a'] },
+    }))
+    await expect(postInjected.promptWithRoom('hi', ['model-a'])).resolves.toContain('model-a')
+
+    const action = b.ctx.slots.entries('conversation.chat.assistant-actions')
+      .find(entry => entry.component === BranchPublishAction)
+    expect(action).toMatchObject({ options: { id: 'collaboration-publish-reply', order: 20 } })
+    const actionInjected = action?.inject?.('sess-1' as SessionId as never) as {
+      publishReply: (messageId: string) => Promise<void>
+      branchInfo: (sessionId: string) => Promise<boolean>
+    }
+    await actionInjected.publishReply('msg-7')
+    expect(b.publish).toHaveBeenCalledWith('sess-1', 'alice', undefined, 'msg-7')
+    await expect(actionInjected.branchInfo('sess-1')).resolves.toBe(true)
+    await b.dispose()
+  })
+
   it('restores the last session for a human after switching away', async () => {
     const ctx = new Context()
     class Remote extends Service {
@@ -265,6 +393,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
@@ -350,6 +479,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
@@ -412,6 +542,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
@@ -479,6 +610,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
@@ -537,6 +669,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     let dispose: (() => Promise<void>) | undefined
@@ -598,6 +731,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     let dispose: (() => Promise<void>) | undefined
@@ -651,6 +785,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
@@ -729,6 +864,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply: async (plugin: Context) => mountCollaborationUi(plugin, REMOTE) })
@@ -791,6 +927,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     let dispose: (() => Promise<void>) | undefined
@@ -825,7 +962,7 @@ describe('collaboration-room browser plugin', () => {
       expect(roster.hooks.actors.getSnapshot().selectedHumanId).toBe('alice')
     })
     await injected.publish()
-    expect(b.publish).toHaveBeenCalledWith('sess-1', 'alice')
+    expect(b.publish).toHaveBeenCalledWith('sess-1', 'alice', undefined, undefined)
     injected.thinking(true)
     expect(
       (badgeSelect?.inject?.() as { hooks: { actors: { getSnapshot: () => { thinking: boolean } } } })
@@ -1008,6 +1145,7 @@ describe('collaboration-room browser plugin', () => {
         'conversation.chat.node': { kind: 'keyed', scope: 'session' },
         'conversation.input.right': { kind: 'list', scope: 'session' },
         'conversation.composer.dock': { kind: 'list', scope: 'session' },
+        'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
       },
     } as never, () => null)
     const fiber = ctx.plugin({ inject: [...inject], apply })

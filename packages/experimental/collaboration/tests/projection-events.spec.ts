@@ -123,6 +123,16 @@ describe('collaboration projection events', () => {
     expect(state.occupants).toEqual([ActorId('alice'), ActorId('bob')])
   })
 
+  it('removes occupants and ignores removals of non-occupants', () => {
+    const removed = project([
+      event('collaboration/occupant', { version: 1, actorId: ActorId('alice') }, SessionSeq(0)),
+      event('collaboration/occupant', { version: 1, actorId: ActorId('bob') }, SessionSeq(1)),
+      event('collaboration/occupant-removed', { version: 1, actorId: ActorId('bob') }, SessionSeq(2)),
+      event('collaboration/occupant-removed', { version: 1, actorId: ActorId('carol') }, SessionSeq(3)),
+    ])
+    expect(removed.occupants).toEqual([ActorId('alice')])
+  })
+
   it('fails duplicate messages, duplicate children, and invoke-before-open', () => {
     const actor = ActorId('model-a')
     const message = event('collaboration/message', {

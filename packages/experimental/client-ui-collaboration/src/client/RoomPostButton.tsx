@@ -14,9 +14,10 @@ import css from './RoomPostButton.module.css'
 /** Injected post of the current Session's trimmed composer draft as the selected test human. */
 export interface RoomPostInjected {
   sessionId: string
-  post: (text: string, mentions: readonly string[]) => Promise<void>
-  promptWithRoom: (text: string, mentions: readonly string[]) => Promise<void>
+  post: (text: string, mentions: readonly string[]) => Promise<string | undefined>
+  promptWithRoom: (text: string, mentions: readonly string[]) => Promise<string | undefined>
   publish: () => Promise<void>
+  branchInfo: (sessionId: string) => Promise<boolean>
   thinking: (value: boolean) => void
   hooks: {
     actors: HostObservable<ActorRosterSnapshot>
@@ -46,7 +47,7 @@ function sendErrorCopy(reason: unknown, t: RoomPostButtonProps['t']): string {
  * Posts the composer draft through the collaboration Remote, or admits room context then followups.
  */
 export function RoomPostButton({
-  useInput, inputActions, sessionId, post, promptWithRoom, publish, thinking,
+  useInput, inputActions, sessionId, post, promptWithRoom, publish, branchInfo, thinking,
   useActors, useSessions, t,
 }: RoomPostButtonProps) {
   const draft = useInput(s => s.draft)
@@ -61,7 +62,17 @@ export function RoomPostButton({
   ])
   const remembered = useActors(snapshot => snapshot.branchIds?.includes(sessionId) === true)
   const listed = useSessions(list => isOwnedBranch(selectedHumanId, list, sessionId))
-  const onBranch = remembered || listed
+  const [queriedBranch, setQueriedBranch] = useState(false)
+  useEffect(() => {
+    setQueriedBranch(false)
+    if (remembered || listed) return
+    let cancelled = false
+    void branchInfo(sessionId).then((isBranch) => {
+      if (!cancelled && isBranch) setQueriedBranch(true)
+    }, () => {})
+    return () => { cancelled = true }
+  }, [branchInfo, sessionId, remembered, listed])
+  const onBranch = remembered || listed || queriedBranch
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const alive = useRef(true)
@@ -77,15 +88,16 @@ export function RoomPostButton({
   const postDisabled = busy || text === '' || selectedHumanId === undefined
   const promptDisabled = busy || text === ''
 
-  const finish = (action: () => Promise<void>): void => {
+  const finish = (action: () => Promise<string | void>): void => {
     setSending(true)
     thinking(true)
     setError(null)
-    void action().then(() => {
+    void action().then((warning) => {
       thinking(false)
       if (!alive.current) return
       setSending(false)
       inputActions.setDraft('')
+      if (typeof warning === 'string' && warning !== '') setError(warning)
     }, (reason: unknown) => {
       thinking(false)
       if (!alive.current) return

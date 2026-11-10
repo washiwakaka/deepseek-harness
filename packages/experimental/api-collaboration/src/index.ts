@@ -3,9 +3,11 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { ActorId, CollaborationError } from '@deepseek-ai/dsh-experimental-collaboration'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {
   CollaborationActorRow,
+  CollaborationBranchInfo,
   CollaborationPostRequest,
   CollaborationPostResult,
 } from './types.ts'
@@ -42,6 +44,12 @@ function toRemoteError(error: CollaborationError, actorId: string): RemoteError 
       return new RemoteError('collaboration/invalid-argument', error.message, { reason: error.message }, { cause: error })
     case 'COLLAB_NOT_BRANCH':
       return new RemoteError('collaboration/invalid-argument', error.message, { reason: error.message }, { cause: error })
+    case 'COLLAB_ALREADY_PUBLISHED':
+      return new RemoteError('collaboration/already-published', error.message, { reason: error.message }, { cause: error })
+    case 'COLLAB_CHILD_MISSING':
+      return new RemoteError('collaboration/child-missing', error.message, { reason: error.message }, { cause: error })
+    case 'COLLAB_PROJECTION_FAILED':
+      return new RemoteError('collaboration/projection-failed', error.message, { reason: error.message }, { cause: error })
     default:
       return new RemoteError('collaboration/failed', error.message, { reason: error.message }, { cause: error })
   }
@@ -112,7 +120,10 @@ export default class CollaborationController extends TypertRemoteService {
         text: request.text,
         ...request.mentions === undefined ? {} : { mentions: request.mentions.map(id => ActorId(id)) },
       })
-      return { childSessionIds: posted.childSessionIds.map(id => String(id)) }
+      return {
+        childSessionIds: posted.childSessionIds.map(id => String(id)),
+        failedActorIds: posted.failedActorIds.map(id => String(id)),
+      }
     } catch (error: unknown) {
       signal.throwIfAborted()
       if (error instanceof CollaborationError) throw toRemoteError(error, request.actorId)
@@ -121,16 +132,80 @@ export default class CollaborationController extends TypertRemoteService {
   }
 
   /**
-   * Copy this branch's latest assistant text onto its room as that AI's room line.
+   * Copy one assistant reply from this branch onto its room as that AI's room line.
    * @param agent - live branch Agent started by a mention.
    * @param actorId - human occupant publishing from the branch.
+   * @param assistantSeq - branch assistant-message seq to publish; omitted publishes the latest reply.
+   * @param assistantMessageId - optional branch assistant message id, for clients that address a reply by identity instead of seq.
    * @param signal - Client cancellation.
    */
   @Remote
-  async publish(agent: Agent, actorId: string, signal: AbortSignal): Promise<void> {
+  async publish(
+    agent: Agent,
+    actorId: string,
+    assistantSeq: number | undefined,
+    assistantMessageId: string | undefined,
+    signal: AbortSignal,
+  ): Promise<void> {
     signal.throwIfAborted()
     try {
-      await this.ctx.collaboration.publishFromChild(agent.session, ActorId(actorId))
+      await this.ctx.collaboration.publishFromChild(
+        agent.session,
+        ActorId(actorId),
+        assistantSeq === undefined ? undefined : SessionSeq(assistantSeq),
+        assistantMessageId,
+      )
+    } catch (error: unknown) {
+      signal.throwIfAborted()
+      if (error instanceof CollaborationError) throw toRemoteError(error, actorId)
+      throw error
+    }
+  }
+
+  /**
+   * Describe the room branch this Session belongs to, when it is one.
+   * @param agent - candidate branch Agent.
+   * @param signal - Client cancellation.
+   * @returns the owning room and AI occupant, or `null` when this Session is not a branch.
+   */
+  @Remote
+  branchInfo(agent: Agent, signal: AbortSignal): CollaborationBranchInfo | null {
+    signal.throwIfAborted()
+    const branch = this.ctx.collaboration.branchOf(agent.session)
+    if (branch === undefined) return null
+    return { roomId: String(branch.roomId), actorId: String(branch.actorId) }
+  }
+
+  /**
+   * Remove the calling human from this room.
+   * @param agent - live room Agent.
+   * @param actorId - human leaving the room.
+   * @param signal - Client cancellation.
+   */
+  @Remote
+  async leaveRoom(agent: Agent, actorId: string, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted()
+    try {
+      await this.ctx.collaboration.leaveRoom(agent.session, ActorId(actorId))
+    } catch (error: unknown) {
+      signal.throwIfAborted()
+      if (error instanceof CollaborationError) throw toRemoteError(error, actorId)
+      throw error
+    }
+  }
+
+  /**
+   * Remove one occupant from this room; only the room creator may call this.
+   * @param agent - live room Agent.
+   * @param actorId - room creator performing the removal.
+   * @param targetId - occupant to remove.
+   * @param signal - Client cancellation.
+   */
+  @Remote
+  async removeOccupant(agent: Agent, actorId: string, targetId: string, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted()
+    try {
+      await this.ctx.collaboration.removeOccupant(agent.session, ActorId(actorId), ActorId(targetId))
     } catch (error: unknown) {
       signal.throwIfAborted()
       if (error instanceof CollaborationError) throw toRemoteError(error, actorId)

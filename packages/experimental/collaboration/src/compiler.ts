@@ -64,6 +64,37 @@ function labeledLines(
   return lines.map(line => line.text)
 }
 
+/** Marker replacing room lines dropped by the compile byte budget. */
+export const COLLABORATION_COMPILE_OMITTED_LINE = '[earlier room lines omitted]'
+
+/**
+ * Drop the oldest lines until the joined transcript fits the byte budget.
+ * The durable room log is untouched; only this compiled copy shrinks.
+ * @param lines - labeled transcript lines in seq order.
+ * @param maxBytes - UTF-8 byte budget for the joined lines, or `undefined` for no budget.
+ * @returns the newest lines that fit, led by an omission marker when any line was dropped.
+ */
+export function fitCompileLines(
+  lines: readonly string[],
+  maxBytes: number | undefined,
+): string[] {
+  if (maxBytes === undefined) return [...lines]
+  const kept = [...lines]
+  let omitted = false
+  const joinedBytes = (rows: readonly string[]): number =>
+    Buffer.byteLength(rows.join('\n'), 'utf8')
+  while (kept.length > 1 && joinedBytes(kept) > maxBytes) {
+    kept.shift()
+    omitted = true
+  }
+  if (!omitted) return kept
+  const withMarker = [COLLABORATION_COMPILE_OMITTED_LINE, ...kept]
+  while (withMarker.length > 2 && joinedBytes(withMarker) > maxBytes) {
+    withMarker.splice(1, 1)
+  }
+  return withMarker
+}
+
 /**
  * Pull room-Agent user and assistant turns that a mention child cannot see through `deriveMessages()`.
  * Fork-inherited events stay off the child's own history; skip already-compiled mention and room-context injects.
@@ -105,6 +136,7 @@ export function collectRoomConversation(
  * @param throughSeq - inclusive seq of the triggering mention.
  * @param lastThroughSeq - previous watermark for this occupant, if any.
  * @param conversation - room-Agent user and assistant turns in the same window.
+ * @param maxCompileBytes - UTF-8 byte budget for the compiled task; older lines drop out behind an omission marker.
  * @returns labeled transcript plus the recipient instruction.
  */
 export function compileMentionTask(
@@ -113,11 +145,15 @@ export function compileMentionTask(
   throughSeq: SessionSeq,
   lastThroughSeq: SessionSeq | undefined,
   conversation: readonly RoomConversationLine[] = [],
+  maxCompileBytes?: number,
 ): string {
   const lines = labeledLines(messages, conversation, throughSeq, lastThroughSeq, recipient.id)
   const instruction = COLLABORATION_MENTION_INSTRUCTION.replace('{name}', recipient.name)
   if (lines.length === 0) return instruction
-  return `${instruction}\n\n${lines.join('\n')}`
+  const budget = maxCompileBytes === undefined
+    ? undefined
+    : Math.max(0, maxCompileBytes - Buffer.byteLength(`${instruction}\n\n`, 'utf8'))
+  return `${instruction}\n\n${fitCompileLines(lines, budget).join('\n')}`
 }
 
 /**
@@ -125,14 +161,19 @@ export function compileMentionTask(
  * @param messages - projected room lines in log order.
  * @param throughSeq - inclusive seq of the latest room line.
  * @param lastThroughSeq - previous room-Agent compile watermark, if any.
+ * @param maxCompileBytes - UTF-8 byte budget for the compiled delta; older lines drop out behind an omission marker.
  * @returns labeled transcript, or `undefined` when the delta is empty.
  */
 export function compileRoomContext(
   messages: readonly CollaborationMessage[],
   throughSeq: SessionSeq,
   lastThroughSeq: SessionSeq | undefined,
+  maxCompileBytes?: number,
 ): string | undefined {
   const lines = labeledLines(messages, [], throughSeq, lastThroughSeq, undefined)
   if (lines.length === 0) return undefined
-  return `${COLLABORATION_ROOM_CONTEXT_INSTRUCTION}\n\n${lines.join('\n')}`
+  const budget = maxCompileBytes === undefined
+    ? undefined
+    : Math.max(0, maxCompileBytes - Buffer.byteLength(`${COLLABORATION_ROOM_CONTEXT_INSTRUCTION}\n\n`, 'utf8'))
+  return `${COLLABORATION_ROOM_CONTEXT_INSTRUCTION}\n\n${fitCompileLines(lines, budget).join('\n')}`
 }

@@ -87,6 +87,26 @@ export interface InsertTextRequest {
   readonly continue?: boolean
 }
 
+/**
+ * One ordinary composer submission offered to business plugins before the
+ * default prompt sink runs. A listener that settles the submission returns
+ * its outcome; every other listener returns `undefined`.
+ */
+export interface BeforeSendRequest {
+  /** Session the composer is addressing, as a plain id string. */
+  readonly sessionId: string
+  /** Serialized prompt text (reference chips already expanded by their owners). */
+  readonly text: string
+  /** Raw draft text as typed, with chips in their display form. */
+  readonly draft: string
+  /** Reference chips in the sent draft, in clipboard order. */
+  readonly occurrences: readonly Occurrence[]
+  /** Number of file attachments riding this submission. */
+  readonly attachmentCount: number
+  /** Delivery mode the composer selected. */
+  readonly mode: InputSubmitMode
+}
+
 /** Trigger hit used to open one source programmatically. */
 export interface InputTriggerHit {
   readonly trigger: '/' | '@'
@@ -162,6 +182,15 @@ declare module '@deepseek-ai/cordis' {
      * @mode bail
      */
     'slash/input-insert-text'(request: InsertTextRequest): true | undefined
+    /**
+     * Offer one ordinary composer submission to business plugins before the
+     * default prompt sink. The first listener returning an outcome settles
+     * the submission; returning `undefined` leaves it to the default sink.
+     * @param request - session, serialized text, raw draft, chips, and mode.
+     * @returns the settling outcome, or `undefined` to pass through.
+     * @mode serial
+     */
+    'conversation/before-send'(request: BeforeSendRequest): Promise<SubmitOutcome | undefined> | SubmitOutcome | undefined
   }
 }
 

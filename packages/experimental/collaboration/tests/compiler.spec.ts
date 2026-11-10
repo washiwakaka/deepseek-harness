@@ -103,6 +103,28 @@ describe('compileMentionTask', () => {
   })
 })
 
+describe('compile byte budget', () => {
+  it('drops the oldest lines and marks the omission when the window exceeds the budget', () => {
+    const messages = [
+      line(0, 'alice', 'Alice', 'first line here'),
+      line(1, 'bob', 'Bob', 'second line here'),
+      line(2, 'alice', 'Alice', 'third line here'),
+    ]
+    const compiled = compileMentionTask(messages, A, SessionSeq(2), undefined, [], 140)
+    expect(compiled).toContain('[earlier room lines omitted]')
+    expect(compiled).not.toContain('first line here')
+    expect(compiled).toContain('third line here')
+    expect(Buffer.byteLength(compiled, 'utf8')).toBeLessThanOrEqual(140)
+  })
+
+  it('leaves the transcript untouched when it fits the budget', () => {
+    const messages = [line(0, 'alice', 'Alice', 'hello')]
+    expect(compileMentionTask(messages, A, SessionSeq(0), undefined, [], 4096)).toBe(
+      `${COLLABORATION_MENTION_INSTRUCTION.replace('{name}', 'A')}\n\n[Alice] hello`,
+    )
+  })
+})
+
 describe('collectRoomConversation', () => {
   it('keeps user and assistant turns and skips compiled injects', () => {
     const events: SessionEvent[] = [

@@ -18,10 +18,17 @@ export const zh = {
   'prompt.aria': '把草稿和房间记录发给当前模型',
   'send.failed': '发送失败',
   'send.noHuman': '房间没有真人占用者',
+  'send.partialFailed': '已发到房间，但这些模型没能启动：{names}',
+  'occupants.leave': '离开房间',
+  'occupants.remove': '把 {name} 移出房间',
+  'occupants.aria': '房间成员 {names}',
   thinking: '深度求索中',
   'thinking.aria': '{name} 正在思考',
   publish: '推到主会话',
   'publish.aria': '把当前分支的最新回答发到协作房间',
+  'publish.reply': '发布这条回答',
+  'publish.replyDone': '这条回答已发到房间',
+  'publish.failed': '发布失败',
 } satisfies Record<string, string>
 
 /** Collaboration-room locale key union. */
@@ -42,10 +49,17 @@ export const en = {
   'prompt.aria': "Send the draft and room transcript to this conversation's model",
   'send.failed': 'Could not post',
   'send.noHuman': 'No human occupant is configured',
+  'send.partialFailed': 'Posted to the room, but these models could not start: {names}',
+  'occupants.leave': 'Leave room',
+  'occupants.remove': 'Remove {name} from the room',
+  'occupants.aria': 'Room members {names}',
   thinking: 'Deep diving',
   'thinking.aria': '{name} is thinking',
   publish: 'Push to room',
   'publish.aria': 'Post this branch\'s latest answer to the collaboration room',
+  'publish.reply': 'Publish this answer to the room',
+  'publish.replyDone': 'This answer is on the room',
+  'publish.failed': 'Could not publish',
 } satisfies Record<CollaborationRoomKey, string>
 
 /** Japanese copy, checked against the English keys. */
@@ -63,10 +77,17 @@ export const ja = {
   'prompt.aria': '下書きとルーム記録をこの会話のモデルに送る',
   'send.failed': '投稿できませんでした',
   'send.noHuman': '人間の参加者は設定されていません',
+  'send.partialFailed': 'ルームに投稿しましたが、次のモデルを起動できませんでした：{names}',
+  'occupants.leave': 'ルームを退出',
+  'occupants.remove': '{name} をルームから削除',
+  'occupants.aria': 'ルームメンバー {names}',
   thinking: '深く探索中',
   'thinking.aria': '{name} が考えています',
   publish: 'ルームに送る',
   'publish.aria': 'このブランチの最新の回答をコラボレーションルームに投稿',
+  'publish.reply': 'この回答をルームに公開',
+  'publish.replyDone': 'この回答はルームに公開済みです',
+  'publish.failed': '公開できませんでした',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish copy, checked against the English keys. */
@@ -84,10 +105,17 @@ export const es = {
   'prompt.aria': 'Enviar el borrador y la transcripción de la sala a este modelo',
   'send.failed': 'No se pudo publicar',
   'send.noHuman': 'No hay un ocupante humano configurado',
+  'send.partialFailed': 'Se publicó en la sala, pero estos modelos no pudieron iniciarse: {names}',
+  'occupants.leave': 'Salir de la sala',
+  'occupants.remove': 'Quitar a {name} de la sala',
+  'occupants.aria': 'Miembros de la sala {names}',
   thinking: 'Exploración profunda',
   'thinking.aria': '{name} está pensando',
   publish: 'Enviar a la sala',
   'publish.aria': 'Publicar la última respuesta de esta rama en la sala de colaboración',
+  'publish.reply': 'Publicar esta respuesta en la sala',
+  'publish.replyDone': 'Esta respuesta ya está en la sala',
+  'publish.failed': 'No se pudo publicar',
 } satisfies Record<keyof typeof en, string>
 
 /** French copy, checked against the English keys. */
@@ -105,10 +133,17 @@ export const fr = {
   'prompt.aria': 'Envoyer le brouillon et la transcription de la salle à ce modèle',
   'send.failed': 'Impossible de publier',
   'send.noHuman': "Aucun occupant humain n'est configuré",
+  'send.partialFailed': 'Publié dans la salle, mais ces modèles n’ont pas pu démarrer : {names}',
+  'occupants.leave': 'Quitter la salle',
+  'occupants.remove': 'Retirer {name} de la salle',
+  'occupants.aria': 'Membres de la salle {names}',
   thinking: 'Exploration en profondeur',
   'thinking.aria': '{name} réfléchit',
   publish: 'Envoyer dans la salle',
   'publish.aria': 'Publier la dernière réponse de cette branche dans la salle de collaboration',
+  'publish.reply': 'Publier cette réponse dans la salle',
+  'publish.replyDone': 'Cette réponse est dans la salle',
+  'publish.failed': 'Publication impossible',
 } satisfies Record<keyof typeof en, string>
 
 /** German copy, checked against the English keys. */
@@ -126,10 +161,17 @@ export const de = {
   'prompt.aria': 'Entwurf und Raumprotokoll an dieses Modell senden',
   'send.failed': 'Posten fehlgeschlagen',
   'send.noHuman': 'Kein menschlicher Teilnehmer konfiguriert',
+  'send.partialFailed': 'Im Raum gepostet, aber diese Modelle konnten nicht starten: {names}',
+  'occupants.leave': 'Raum verlassen',
+  'occupants.remove': '{name} aus dem Raum entfernen',
+  'occupants.aria': 'Raummitglieder {names}',
   thinking: 'Tiefes Eintauchen',
   'thinking.aria': '{name} denkt nach',
   publish: 'In den Raum senden',
   'publish.aria': 'Die neueste Antwort dieses Zweigs im Kollaborationsraum posten',
+  'publish.reply': 'Diese Antwort im Raum veröffentlichen',
+  'publish.replyDone': 'Diese Antwort ist im Raum',
+  'publish.failed': 'Veröffentlichen fehlgeschlagen',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian copy, checked against the English keys. */
@@ -147,10 +189,17 @@ export const ru = {
   'prompt.aria': 'Отправить черновик и запись комнаты этой модели',
   'send.failed': 'Не удалось отправить',
   'send.noHuman': 'Человек-участник не настроен',
+  'send.partialFailed': 'Отправлено в комнату, но эти модели не удалось запустить: {names}',
+  'occupants.leave': 'Покинуть комнату',
+  'occupants.remove': 'Удалить {name} из комнаты',
+  'occupants.aria': 'Участники комнаты {names}',
   thinking: 'Глубокий поиск',
   'thinking.aria': '{name} думает',
   publish: 'В комнату',
   'publish.aria': 'Отправить последний ответ этой ветки в комнату совместной работы',
+  'publish.reply': 'Опубликовать этот ответ в комнате',
+  'publish.replyDone': 'Этот ответ уже в комнате',
+  'publish.failed': 'Не удалось опубликовать',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese copy, checked against the English keys. */
@@ -168,8 +217,15 @@ export const pt = {
   'prompt.aria': 'Enviar o rascunho e a transcrição da sala para este modelo',
   'send.failed': 'Não foi possível publicar',
   'send.noHuman': 'Nenhum ocupante humano está configurado',
+  'send.partialFailed': 'Publicado na sala, mas estes modelos não puderam iniciar: {names}',
+  'occupants.leave': 'Sair da sala',
+  'occupants.remove': 'Remover {name} da sala',
+  'occupants.aria': 'Membros da sala {names}',
   thinking: 'Mergulho profundo',
   'thinking.aria': '{name} está pensando',
   publish: 'Enviar para a sala',
   'publish.aria': 'Publicar a última resposta deste ramo na sala de colaboração',
+  'publish.reply': 'Publicar esta resposta na sala',
+  'publish.replyDone': 'Esta resposta está na sala',
+  'publish.failed': 'Não foi possível publicar',
 } satisfies Record<keyof typeof en, string>

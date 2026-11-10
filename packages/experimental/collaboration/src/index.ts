@@ -56,6 +56,8 @@ export {
   collectRoomConversation,
   compileMentionTask,
   compileRoomContext,
+  fitCompileLines,
+  COLLABORATION_COMPILE_OMITTED_LINE,
   COLLABORATION_MENTION_INSTRUCTION,
   COLLABORATION_ROOM_CONTEXT_INSTRUCTION,
   ROOM_ASSISTANT_LABEL,
@@ -82,6 +84,8 @@ declare module '@deepseek-ai/cordis' {
 }
 
 const DEFAULT_MAX_MESSAGE_BYTES = 65_536
+
+const DEFAULT_MAX_COMPILE_BYTES = 32_768
 
 const SEED_ADMIN_FORWARDED_EVENTS: readonly RemoteAccessAction[] = [
   'event:agent-preset/selected',
@@ -197,14 +201,18 @@ export class CollaborationService extends Service {
       model: z.string().default(''),
     })).default([...defaultActors]),
     maxMessageBytes: z.number().step(1).min(1).default(DEFAULT_MAX_MESSAGE_BYTES),
+    maxCompileBytes: z.number().step(1).min(1).default(DEFAULT_MAX_COMPILE_BYTES),
   })
 
   private readonly roster: readonly ResolvedActor[]
   private readonly actorsById: ReadonlyMap<string, ResolvedActor>
   private readonly maxMessageBytes: number
+  private readonly maxCompileBytes: number
   private journal!: CollaborationJournal
   private readonly childHandles = new Map<string, AgentHandle>()
   private readonly occupancyCache = new Map<string, RoomOccupancy>()
+  private occupancyPrune: Promise<void> | undefined
+  private lastOccupancyPrune = 0
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'collaboration')
@@ -213,6 +221,10 @@ export class CollaborationService extends Service {
     this.maxMessageBytes = positiveLimit(
       'maxMessageBytes',
       config.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES,
+    )
+    this.maxCompileBytes = positiveLimit(
+      'maxCompileBytes',
+      config.maxCompileBytes ?? DEFAULT_MAX_COMPILE_BYTES,
     )
   }
 
@@ -247,6 +259,7 @@ export class CollaborationService extends Service {
       ctx.remoteAccess.registerPolicy('local-identity', createLocalIdentityAccessPolicy({
         accountForBrowserSession: id => this.ctx.get('identity')?.accountForBrowserSession(id),
         listedSessions: () => {
+          this.scheduleOccupancyPrune()
           const ids: SessionId[] = []
           const seen = new Set<string>()
           const add = (id: SessionId) => {
@@ -312,6 +325,7 @@ export class CollaborationService extends Service {
     const author = this.postingHuman(request.actorId)
     const resolved = await this.resolveMentions(author, request.mentions ?? [])
     const childSessionIds: SessionId[] = []
+    const failedActorIds: ActorId[] = []
     await this.journal.transact(session.id, async () => {
       this.assertCanAccess(session, author)
       await this.admitHumans(session, [
@@ -339,11 +353,20 @@ export class CollaborationService extends Service {
       if (throughSeq === undefined) {
         throw new CollaborationError('room has no events to compile', 'COLLAB_EMPTY_ROOM')
       }
+      // The room line is already durable at this point. A branch that fails
+      // to start must not fail the whole post (a client retry would duplicate
+      // the room line and re-invoke the branches that did start), so failed
+      // recipients are reported and can be mentioned again in a new post.
       for (const recipient of resolved.ais) {
-        childSessionIds.push(await this.startActor(session, author, recipient, throughSeq))
+        try {
+          childSessionIds.push(await this.startActor(session, author, recipient, throughSeq))
+        } catch (startError) {
+          void startError
+          failedActorIds.push(recipient.id)
+        }
       }
     })
-    return { childSessionIds }
+    return { childSessionIds, failedActorIds }
   }
 
   /**
@@ -397,34 +420,65 @@ export class CollaborationService extends Service {
   }
 
   /**
-   * Copy the branch's latest assistant text onto the room as that AI's room line.
+   * Describe the room branch this Session belongs to, when it is one.
+   * @param session - candidate branch Session.
+   * @returns the owning room and AI occupant from the latest mention source, or `undefined`.
+   */
+  branchOf(session: Session): { roomId: SessionId; actorId: ActorId } | undefined {
+    const mention = lastMentionSource(session)
+    if (mention === undefined) return undefined
+    return { roomId: mention.roomId, actorId: mention.actorId }
+  }
+
+  /**
+   * Copy one assistant reply from the branch onto the room as that AI's room line.
+   * The room Agent is cold-resumed when it is not live. Publishing the same
+   * branch reply twice is refused instead of duplicating the room line.
    * @param child - live branch Session started by a mention.
    * @param actorId - human occupant publishing from the branch.
+   * @param assistantSeq - branch assistant-message seq to publish; omitted publishes the latest reply.
+   * @param assistantMessageId - optional branch assistant message id, for clients that address a reply by identity instead of seq.
    */
-  async publishFromChild(child: Session, actorId: ActorId): Promise<void> {
+  async publishFromChild(
+    child: Session,
+    actorId: ActorId,
+    assistantSeq?: SessionSeq,
+    assistantMessageId?: string,
+  ): Promise<void> {
     const publisher = this.postingHuman(actorId)
     const mention = lastMentionSource(child)
     if (mention === undefined) {
       throw new CollaborationError('session is not a collaboration branch', 'COLLAB_NOT_BRANCH')
     }
-    const roomAgent = this.ctx.agents.get(mention.roomId)
-    if (roomAgent === undefined) {
-      throw new CollaborationError(`room "${mention.roomId}" is not live`, 'COLLAB_CHILD_MISSING')
-    }
-    this.assertCanAccess(roomAgent.session, publisher)
-    const owner = this.journal.state(roomAgent.session).childOwners[child.id]
-    if (owner !== undefined && owner !== publisher.id) {
+    const roomAgent = await this.liveOrResumeRoom(mention.roomId)
+    const recipient = this.publishedActor(mention.actorId)
+    const reply = assistantReply(child, assistantSeq, assistantMessageId)
+    if (reply === undefined) {
       throw new CollaborationError(
-        `actor "${publisher.id}" does not own branch "${child.id}"`,
-        'COLLAB_ACCESS_DENIED',
+        assistantSeq === undefined && assistantMessageId === undefined
+          ? 'branch has no assistant text to publish'
+          : `branch has no assistant reply at ${assistantSeq === undefined ? `message ${assistantMessageId}` : `seq ${assistantSeq}`}`,
+        'COLLAB_INVALID_ARGUMENT',
       )
     }
-    const recipient = this.publishedActor(mention.actorId)
-    const reply = assistantText(child)
-    if (reply.length === 0) {
-      throw new CollaborationError('branch has no assistant text to publish', 'COLLAB_INVALID_ARGUMENT')
-    }
     await this.journal.transact(mention.roomId, async () => {
+      this.assertCanAccess(roomAgent.session, publisher)
+      const owner = this.journal.state(roomAgent.session).childOwners[child.id]
+      if (owner !== undefined && owner !== publisher.id) {
+        throw new CollaborationError(
+          `actor "${publisher.id}" does not own branch "${child.id}"`,
+          'COLLAB_ACCESS_DENIED',
+        )
+      }
+      const already = this.journal.state(roomAgent.session).messages.some(message =>
+        message.branchSessionId === child.id
+        && message.assistantSeq === reply.seq)
+      if (already) {
+        throw new CollaborationError(
+          'this branch reply is already on the room',
+          'COLLAB_ALREADY_PUBLISHED',
+        )
+      }
       await this.journal.appendAndFlush(roomAgent.session, {
         type: 'collaboration/message',
         data: {
@@ -433,10 +487,100 @@ export class CollaborationService extends Service {
           actorId: recipient.id,
           kind: 'ai',
           name: recipient.name,
-          text: reply,
+          text: reply.text,
           mentions: [],
+          branchSessionId: child.id,
+          assistantSeq: reply.seq,
         },
       })
+    })
+  }
+
+  /**
+   * Return the live room Agent, cold-resuming its persisted Session when needed.
+   * @param roomId - room Session identity recorded on a branch mention.
+   * @returns the live room Agent.
+   */
+  private async liveOrResumeRoom(roomId: SessionId): Promise<Agent> {
+    const live = this.ctx.agents.get(roomId)
+    if (live !== undefined) return live
+    try {
+      const handle = await this.ctx.agents.resume({ resumeSessionId: roomId })
+      return handle.agent
+    } catch (error) {
+      throw new CollaborationError(
+        `room "${roomId}" is not live and could not be resumed`,
+        'COLLAB_CHILD_MISSING',
+        { cause: error },
+      )
+    }
+  }
+
+  /**
+   * Remove the calling human from this room. The creator may not leave
+   * while other occupants remain; they remove the others first.
+   * @param session - live room Session.
+   * @param actorId - human leaving the room.
+   */
+  async leaveRoom(session: Session, actorId: ActorId): Promise<void> {
+    const author = this.postingHuman(actorId)
+    await this.journal.transact(session.id, async () => {
+      const state = this.journal.state(session)
+      if (!state.occupants.includes(author.id)) {
+        throw new CollaborationError(
+          `actor "${author.id}" is not an occupant of this room`,
+          'COLLAB_ACCESS_DENIED',
+        )
+      }
+      if (state.occupants[0] === author.id && state.occupants.length > 1) {
+        throw new CollaborationError(
+          'the room creator cannot leave while other occupants remain',
+          'COLLAB_INVALID_ARGUMENT',
+        )
+      }
+      await this.journal.appendAndFlush(session, {
+        type: 'collaboration/occupant-removed',
+        data: { version: 1, actorId: author.id },
+      })
+      this.rememberOccupancy(session)
+      this.refreshAccess()
+    })
+  }
+
+  /**
+   * Remove one occupant from this room. Only the room creator may remove others.
+   * @param session - live room Session.
+   * @param actorId - human performing the removal (the room creator).
+   * @param targetId - occupant to remove.
+   */
+  async removeOccupant(session: Session, actorId: ActorId, targetId: ActorId): Promise<void> {
+    const author = this.postingHuman(actorId)
+    await this.journal.transact(session.id, async () => {
+      const state = this.journal.state(session)
+      if (state.occupants[0] !== author.id) {
+        throw new CollaborationError(
+          'only the room creator may remove occupants',
+          'COLLAB_ACCESS_DENIED',
+        )
+      }
+      if (targetId === author.id) {
+        throw new CollaborationError(
+          'the room creator cannot remove themselves; leave the room instead',
+          'COLLAB_INVALID_ARGUMENT',
+        )
+      }
+      if (!state.occupants.includes(targetId)) {
+        throw new CollaborationError(
+          `actor "${targetId}" is not an occupant of this room`,
+          'COLLAB_INVALID_ARGUMENT',
+        )
+      }
+      await this.journal.appendAndFlush(session, {
+        type: 'collaboration/occupant-removed',
+        data: { version: 1, actorId: targetId },
+      })
+      this.rememberOccupancy(session)
+      this.refreshAccess()
     })
   }
 
@@ -496,6 +640,7 @@ export class CollaborationService extends Service {
       state.messages,
       throughSeq,
       lastRoomContextSeq(session),
+      this.maxCompileBytes,
     )
     if (text === undefined) return undefined
     return createUserMessage({
@@ -586,7 +731,17 @@ export class CollaborationService extends Service {
    */
   private assertCanAccess(session: Session, human: ResolvedHumanActor): void {
     const occupants = this.journal.state(session).occupants
-    if (occupants.length === 0 || occupants.includes(human.id)) return
+    // A Session with a parent (a mention branch, a subagent child, …) belongs
+    // to another conversation and must never be claimed or posted to as a
+    // room, even though its projection folds the inherited room occupants.
+    if (session.header.parentSession !== undefined) {
+      throw new CollaborationError(
+        `session "${session.id}" is not a claimable room`,
+        'COLLAB_ACCESS_DENIED',
+      )
+    }
+    if (occupants.length === 0) return
+    if (occupants.includes(human.id)) return
     throw new CollaborationError(
       `actor "${human.id}" is not an occupant of this room`,
       'COLLAB_ACCESS_DENIED',
@@ -621,7 +776,7 @@ export class CollaborationService extends Service {
     if (live !== undefined) {
       try {
         const room = this.journal.state(live)
-        this.rememberOccupancyState(sessionId, room)
+        this.rememberOccupancyState(sessionId, room, live.header)
         return this.occupancyCache.get(sessionId)
       } catch (projectionError) {
         void projectionError
@@ -632,7 +787,7 @@ export class CollaborationService extends Service {
 
   private rememberOccupancy(session: Session): void {
     try {
-      this.rememberOccupancyState(session.id, this.journal.state(session))
+      this.rememberOccupancyState(session.id, this.journal.state(session), session.header)
     } catch (projectionError) {
       void projectionError
     }
@@ -642,11 +797,40 @@ export class CollaborationService extends Service {
     readonly occupants: readonly string[]
     readonly children: Readonly<Record<string, string>>
     readonly childOwners: Readonly<Record<string, string>>
-  }): void {
+  }, header: { readonly parentSession?: SessionId; readonly isSeeded?: boolean }): void {
     this.occupancyCache.set(sessionId, {
       occupants: [...room.occupants],
       children: { ...room.children },
       childOwners: { ...room.childOwners },
+      root: header.parentSession === undefined && header.isSeeded !== true,
+    })
+  }
+
+  /**
+   * Drop cached occupancy for Sessions that no longer exist in persistence
+   * and are not live, so a deleted Session stops feeding policy bindings.
+   * Runs at most once every 30 seconds and never blocks a binding read.
+   */
+  private scheduleOccupancyPrune(): void {
+    const now = Date.now()
+    if (this.occupancyPrune !== undefined || now - this.lastOccupancyPrune < 30_000) return
+    this.lastOccupancyPrune = now
+    const prune = (async () => {
+      const listed = await this.ctx.sessionPersistence.list()
+      const persisted = new Set<string>(listed.map(snapshot => snapshot.header.id))
+      const live = new Set<string>((this.ctx.get('sessions')?.list() ?? []).map(session => session.id))
+      let changed = false
+      for (const id of [...this.occupancyCache.keys()]) {
+        if (persisted.has(id) || live.has(id)) continue
+        this.occupancyCache.delete(id)
+        changed = true
+      }
+      if (changed) this.refreshAccess()
+    })()
+    this.occupancyPrune = prune.then(() => {
+      this.occupancyPrune = undefined
+    }, () => {
+      this.occupancyPrune = undefined
     })
   }
 
@@ -670,7 +854,7 @@ export class CollaborationService extends Service {
             state = collaborationProjectionDefinition.apply(state, event)
           }
           if (state.failure !== undefined) continue
-          this.rememberOccupancyState(snapshot.header.id, state)
+          this.rememberOccupancyState(snapshot.header.id, state, snapshot.header)
         } finally {
           await handle.close()
         }
@@ -750,6 +934,7 @@ export class CollaborationService extends Service {
       throughSeq,
       lastThroughSeq,
       collectRoomConversation(session.snapshotEvents(), throughSeq, lastThroughSeq),
+      this.maxCompileBytes,
     )
     child.followup(createUserMessage({
       content: [{ type: 'text', text: task }],
@@ -1002,21 +1187,33 @@ function lastMentionSource(session: Session): {
 }
 
 /**
- * Join assistant text blocks from the branch's derived history.
+ * Find one assistant reply on the branch's own (non-inherited) log events.
  * @param session - branch Session.
- * @returns concatenated assistant text, or `''` when none exists.
+ * @param assistantSeq - exact assistant-message seq, or `undefined`.
+ * @param assistantMessageId - exact assistant message id, or `undefined`.
+ * @returns the reply seq and its joined text blocks, or `undefined` when there is no such reply.
  */
-function assistantText(session: Session): string {
-  const messages = session.deriveMessages()
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role !== 'assistant') continue
-    return message.content
+function assistantReply(
+  session: Session,
+  assistantSeq: SessionSeq | undefined,
+  assistantMessageId: string | undefined,
+): { seq: SessionSeq; text: string } | undefined {
+  let latest: { seq: SessionSeq; text: string } | undefined
+  for (const event of session.snapshotEvents()) {
+    if (event.type !== 'assistant/message') continue
+    if (event.seq < session.inheritedEventCount) continue
+    const text = event.data.message.content
       .filter(block => block.type === 'text')
       .map(block => block.text)
       .join('')
+    if (text.length === 0) continue
+    if (assistantSeq !== undefined && event.seq === assistantSeq) return { seq: event.seq, text }
+    if (assistantMessageId !== undefined && event.data.message.id === assistantMessageId) {
+      return { seq: event.seq, text }
+    }
+    latest = { seq: event.seq, text }
   }
-  return ''
+  return assistantSeq === undefined && assistantMessageId === undefined ? latest : undefined
 }
 
 export default CollaborationService

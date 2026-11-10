@@ -444,7 +444,7 @@ describe('collaboration mentions', () => {
     expect(userTurns).toHaveLength(2)
   })
 
-  it('keeps COLLAB_CHILD_MISSING when the persisted child cannot resume', async () => {
+  it('reports a persisted child that cannot resume as a failed mention instead of failing the post', async () => {
     const { ctx, room } = await setup([textResponse('A first')])
     await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
@@ -453,11 +453,13 @@ describe('collaboration mentions', () => {
     })
     vi.spyOn(ctx.agents, 'get').mockReturnValue(undefined)
     vi.spyOn(ctx.agents, 'resume').mockRejectedValue(new Error('missing log'))
-    await expect(ctx.collaboration.postMessage(room.session, {
+    const posted = await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
       text: '@A again',
       mentions: [ActorId('model-a')],
-    })).rejects.toMatchObject({ code: 'COLLAB_CHILD_MISSING' })
+    })
+    expect(posted.childSessionIds).toEqual([])
+    expect(posted.failedActorIds).toEqual([ActorId('model-a')])
   })
 
   it('places the branch after the room when the Workspace already lists the child', async () => {

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The `collaboration` Remote lets a browser list Config occupants, list Settings models a human may `@`, post a room line, publish a branch answer onto the room, admit uncompiled room context, and send a composer draft with that context. Child mention turns stay on `ctx.collaboration`.
+The `collaboration` Remote lets a browser list Config occupants, list Settings models a human may `@`, post a room line, publish a branch answer onto the room, identify a branch Session, leave or remove occupants, admit uncompiled room context, and send a composer draft with that context. Child mention turns stay on `ctx.collaboration`.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ The `collaboration` Remote lets a browser list Config occupants, list Settings m
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount with `@deepseek-ai/dsh-experimental-collaboration` and Typert from an overlay, not from the default Web remotes list. `listActors()` returns id, kind, and name. Sign-in remotes live on `@deepseek-ai/dsh-experimental-api-identity`. `listMentionModels(actorId, signal)` returns Settings-connected models that human may `@`. `postMessage(agent, { actorId, text, mentions }, signal)` appends on that Agent's Session and returns started branch ids; a human mention invites that occupant. `claimRoom(agent, actorId, signal)` records the creator on an empty room. `publish(agent, actorId, signal)` copies the branch's latest assistant text onto the room. `admitRoomContext(agent, actorId, signal)` logs the uncompiled room delta without followup. `sendWithRoom(agent, text, actorId, signal)` admits then followups the room Agent. Non-occupants receive `collaboration/forbidden`. Unsigned posts receive `collaboration/unauthorized`.
+Mount with `@deepseek-ai/dsh-experimental-collaboration` and Typert from an overlay, not from the default Web remotes list. `listActors()` returns id, kind, and name. Sign-in remotes live on `@deepseek-ai/dsh-experimental-api-identity`. `listMentionModels(actorId, signal)` returns Settings-connected models that human may `@`. `postMessage(agent, { actorId, text, mentions }, signal)` appends on that Agent's Session and returns started branch ids plus `failedActorIds` for mentioned models whose branch could not start; a human mention invites that occupant. `claimRoom(agent, actorId, signal)` records the creator on an empty room. `publish(agent, actorId, assistantSeq, signal)` copies the branch's latest assistant text onto the room, or the reply at `assistantSeq` when given; the Host cold-resumes the room when it is not live and refuses to publish the same reply twice (`collaboration/already-published`). `branchInfo(agent, signal)` returns the owning room and AI occupant for a branch Session, or `null`. `leaveRoom(agent, actorId, signal)` removes the calling human; `removeOccupant(agent, actorId, targetId, signal)` lets the creator remove another occupant. `admitRoomContext(agent, actorId, signal)` logs the uncompiled room delta without followup. `sendWithRoom(agent, text, actorId, signal)` admits then followups the room Agent. Non-occupants receive `collaboration/forbidden`. Unsigned posts receive `collaboration/unauthorized`.
 
 -----
 

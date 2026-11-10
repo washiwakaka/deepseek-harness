@@ -14,6 +14,8 @@ const UNSIGNED = { kind: 'local-identity' as const, browserSessionId: 'peer-anon
 
 const ROOM = SessionId('room-1')
 const BOB_ROOM = SessionId('room-2')
+const LEGACY_ROOM = SessionId('room-3')
+const LEGACY_CHILD = SessionId('child-legacy')
 const ALICE_CHILD = SessionId('child-alice')
 const BOB_CHILD = SessionId('child-bob')
 const BLANK = SessionId('blank-1')
@@ -81,8 +83,14 @@ describe('local-identity session access policy', () => {
       children: {},
       childOwners: {},
     },
+    [LEGACY_ROOM]: {
+      occupants: ['alice', 'bob'],
+      children: { 'alice:model': LEGACY_CHILD },
+      childOwners: {},
+    },
     [ALICE_CHILD]: { occupants: [], children: {}, childOwners: {} },
     [BOB_CHILD]: { occupants: [], children: {}, childOwners: {} },
+    [LEGACY_CHILD]: { occupants: [], children: {}, childOwners: {} },
   }
   const facts = {
     accountForBrowserSession(id: string) {
@@ -93,7 +101,7 @@ describe('local-identity session access policy', () => {
       if (id === 'peer-ws') return { id: 'ws-user', admin: false, capabilities: ['workspace'] as const }
       return undefined
     },
-    listedSessions: () => [ROOM, BOB_ROOM, BLANK, ALICE_CHILD, BOB_CHILD],
+    listedSessions: () => [ROOM, BOB_ROOM, LEGACY_ROOM, BLANK, ALICE_CHILD, BOB_CHILD, LEGACY_CHILD],
     occupancy: occupancy(rooms),
     fullGlobalActions: () => ['settings/describe', 'credentials/describe', 'dynamicCordisRunner/inventory'] as const,
     listedWorkspaces: () => ['ws-1' as never],
@@ -141,6 +149,19 @@ describe('local-identity session access policy', () => {
     expect(allows(policy, ALICE, 'session/prompt', { kind: 'session', id: BLANK })).toBe(false)
     expect(allows(policy, ALICE, 'collaboration/claimRoom', { kind: 'session', id: BLANK })).toBe(true)
     expect(allows(policy, ALICE, 'collaboration/postMessage', { kind: 'session', id: BLANK })).toBe(true)
+  })
+
+  it('does not offer a claim for a non-root Session such as a subagent child', () => {
+    const childLike = SessionId('blank-seeded')
+    const rootPolicy = createLocalIdentityAccessPolicy({
+      ...facts,
+      listedSessions: () => [childLike],
+      occupancy: occupancy({
+        [childLike]: { occupants: [], children: {}, childOwners: {}, root: false },
+      }),
+    })
+    expect(allows(rootPolicy, ALICE, 'collaboration/claimRoom', { kind: 'session', id: childLike })).toBe(false)
+    expect(allows(rootPolicy, ALICE, 'collaboration/postMessage', { kind: 'session', id: childLike })).toBe(false)
   })
 
   it('lets an admin post to an unclaimed room instead of swallowing claim under read', () => {
@@ -206,9 +227,27 @@ describe('local-identity session access policy', () => {
       }),
     })
     expect(allows(edgePolicy, BOB, 'session/prompt', { kind: 'session', id: invitedBranch })).toBe(true)
-    expect(allows(edgePolicy, ALICE, 'collaboration/postMessage', { kind: 'session', id: missingOccupancy })).toBe(true)
+    // A branch owner receives every session-scoped action on their own branch,
+    // even when they are only an invited occupant of the room.
+    expect(actionsOf(edgePolicy, BOB, 'session', invitedBranch)).toEqual(expect.arrayContaining([
+      'workspaceFiles/list',
+      'terminal/create',
+      'dynamicCordisRunner/stopFromPanel',
+    ]))
+    // A legacy branch with no recorded owner is writable by every occupant
+    // but stays creator-scoped for the full action set.
+    expect(allows(policy, BOB, 'session/prompt', { kind: 'session', id: LEGACY_CHILD })).toBe(true)
+    expect(actionsOf(policy, BOB, 'session', LEGACY_CHILD)).not.toEqual(expect.arrayContaining([
+      'terminal/attach',
+    ]))
+    expect(actionsOf(policy, ALICE, 'session', LEGACY_CHILD)).toEqual(expect.arrayContaining([
+      'terminal/attach',
+    ]))
+    // Occupancy-unknown Sessions are never claimable: they may be subagent
+    // children or other non-room conversations the service has not seen.
+    expect(allows(edgePolicy, ALICE, 'collaboration/postMessage', { kind: 'session', id: missingOccupancy })).toBe(false)
     expect(allows(edgePolicy, ADMIN, 'session/follow', { kind: 'session', id: missingOccupancy })).toBe(true)
-    expect(allows(edgePolicy, ADMIN, 'collaboration/postMessage', { kind: 'session', id: missingOccupancy })).toBe(true)
+    expect(allows(edgePolicy, ADMIN, 'collaboration/postMessage', { kind: 'session', id: missingOccupancy })).toBe(false)
     expect(actionsOf(edgePolicy, SEED, 'global')).toEqual(expect.arrayContaining([
       'identity/setAccountCapabilities',
     ]))

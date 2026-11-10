@@ -66,6 +66,12 @@ export interface Config {
   readonly actors?: ActorConfig[]
   /** Maximum UTF-8 bytes in one room message. */
   readonly maxMessageBytes?: number
+  /**
+   * Maximum UTF-8 bytes in one compiled mention task or room-Agent context
+   * delta. Older room lines are dropped from the compiled text (never from
+   * the durable log) once the window exceeds this budget.
+   */
+  readonly maxCompileBytes?: number
 }
 
 /** Resolved human occupant. */
@@ -101,6 +107,11 @@ export interface PostMessageRequest {
 /** Result of one room post after mentioned branches have started. */
 export interface PostMessageResult {
   readonly childSessionIds: readonly SessionId[]
+  /**
+   * AI occupants whose branch could not be started. The room line itself is
+   * durable; the author can mention a failed occupant again in a new post.
+   */
+  readonly failedActorIds: readonly ActorId[]
 }
 
 /** One projected room-visible line. */
@@ -112,6 +123,10 @@ export interface CollaborationMessage {
   readonly name: string
   readonly text: string
   readonly mentions: readonly ActorId[]
+  /** Branch Session this line was published from, when it is a published AI reply. */
+  readonly branchSessionId?: SessionId
+  /** Seq of the assistant message on the branch this line published, for duplicate detection. */
+  readonly assistantSeq?: SessionSeq
 }
 
 /** Durable client view of one room. */
@@ -164,6 +179,10 @@ declare module '@deepseek-ai/dsh-session/types' {
       name: string
       text: string
       mentions: ActorId[]
+      /** Branch Session a published AI reply came from; absent on human lines and older logs. */
+      branchSessionId?: SessionId
+      /** Assistant-message seq on the branch a published AI reply came from; absent on older logs. */
+      assistantSeq?: SessionSeq
     }
     /** First persistent child for one AI occupant. */
     'collaboration/branch-opened': {
@@ -185,6 +204,11 @@ declare module '@deepseek-ai/dsh-session/types' {
     }
     /** One human admitted to this room: the creator, or a later @-invite. */
     'collaboration/occupant': {
+      version: 1
+      actorId: ActorId
+    }
+    /** One human removed from this room by the creator, or leaving on their own. */
+    'collaboration/occupant-removed': {
       version: 1
       actorId: ActorId
     }

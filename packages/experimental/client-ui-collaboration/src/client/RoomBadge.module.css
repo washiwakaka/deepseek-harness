@@ -82,3 +82,33 @@
   color: var(--dsw-alias-state-error);
   font-size: 12px;
 }
+
+.members {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.member {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+}
+
+.mini {
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mini:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-specific-selector);
+}

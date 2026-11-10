@@ -3,10 +3,13 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   admitRoomContext,
+  branchInfoOf,
   firstHumanId,
   isNoHumanPostError,
+  leaveRoom,
   postRoomDraft,
   publishFromChild,
+  removeOccupant,
   sendWithRoom,
   type CollaborationRemote,
 } from '../src/client/post-draft.ts'
@@ -25,6 +28,9 @@ function remote(overrides: Partial<CollaborationRemote> = {}): CollaborationRemo
     listMentionModels: vi.fn(async () => ({ ok: true as const, value: [] })),
     postMessage: vi.fn(async () => ({ ok: true as const, value: { childSessionIds: [] } })),
     publish: vi.fn(async () => ({ ok: true as const })),
+    branchInfo: vi.fn(async () => ({ ok: true as const, value: null })),
+    leaveRoom: vi.fn(async () => ({ ok: true as const })),
+    removeOccupant: vi.fn(async () => ({ ok: true as const })),
     admitRoomContext: vi.fn(async () => ({ ok: true as const })),
     sendWithRoom: vi.fn(async () => ({ ok: true as const })),
     claimRoom: vi.fn(async () => ({ ok: true as const })),
@@ -114,7 +120,40 @@ describe('postRoomDraft', () => {
   it('publishes the current branch onto the room', async () => {
     const api = remote()
     await publishFromChild(api, sessionId, 'alice')
-    expect(api.publish).toHaveBeenCalledWith(sessionId, 'alice')
+    expect(api.publish).toHaveBeenCalledWith(sessionId, 'alice', undefined, undefined)
+  })
+
+  it('publishes a selected reply and reads branch ownership', async () => {
+    const api = remote({
+      branchInfo: vi.fn(async () => ({
+        ok: true as const,
+        value: { roomId: 'room-1', actorId: 'model-a' },
+      })),
+    })
+    await publishFromChild(api, sessionId, 'alice', { assistantSeq: 42 })
+    expect(api.publish).toHaveBeenCalledWith(sessionId, 'alice', 42, undefined)
+    await publishFromChild(api, sessionId, 'alice', { assistantMessageId: 'msg-7' })
+    expect(api.publish).toHaveBeenCalledWith(sessionId, 'alice', undefined, 'msg-7')
+    await expect(branchInfoOf(api, sessionId)).resolves.toEqual({ roomId: 'room-1', actorId: 'model-a' })
+    const notBranch = remote()
+    await expect(branchInfoOf(notBranch, sessionId)).resolves.toBeUndefined()
+    const refused = remote({
+      branchInfo: vi.fn(async () => ({ ok: false as const, error: new Error('offline') })),
+    })
+    await expect(branchInfoOf(refused, sessionId)).resolves.toBeUndefined()
+  })
+
+  it('leaves and removes occupants through the Remote', async () => {
+    const api = remote()
+    await leaveRoom(api, sessionId, 'bob')
+    expect(api.leaveRoom).toHaveBeenCalledWith(sessionId, 'bob')
+    await removeOccupant(api, sessionId, 'alice', 'bob')
+    expect(api.removeOccupant).toHaveBeenCalledWith(sessionId, 'alice', 'bob')
+    const error = new Error('nope')
+    const refused = remote({ leaveRoom: vi.fn(async () => ({ ok: false as const, error })) })
+    await expect(leaveRoom(refused, sessionId, 'bob')).rejects.toBe(error)
+    const refusedRemove = remote({ removeOccupant: vi.fn(async () => ({ ok: false as const, error })) })
+    await expect(removeOccupant(refusedRemove, sessionId, 'alice', 'bob')).rejects.toBe(error)
   })
 
   it('throws when publish is refused', async () => {
@@ -127,7 +166,7 @@ describe('postRoomDraft', () => {
     const api = remote({
       postMessage: vi.fn(async () => ({ ok: true as const, value: undefined as never })),
     })
-    await expect(postRoomDraft(api, sessionId, 'hello', 'alice')).resolves.toEqual([])
+    await expect(postRoomDraft(api, sessionId, 'hello', 'alice')).resolves.toEqual({ childSessionIds: [], failedActorIds: [] })
   })
 
   it('throws when the post is refused', async () => {

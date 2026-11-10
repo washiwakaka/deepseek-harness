@@ -14,6 +14,7 @@ interface CollaborationListView {
  * @param humanId - current test author.
  * @param list - Host session catalog, including collaboration projections.
  * @param sessionId - candidate branch Session.
+ * @returns true when the catalog names `humanId` as this branch's owner.
  */
 export function isOwnedBranch(
   humanId: string | undefined,

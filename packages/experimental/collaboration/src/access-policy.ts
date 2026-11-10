@@ -17,6 +17,12 @@ export interface RoomOccupancy {
   readonly occupants: readonly string[]
   readonly children: Readonly<Record<string, string>>
   readonly childOwners: Readonly<Record<string, string>>
+  /**
+   * Whether the Session header marks a root conversation (no parent, not
+   * seeded). Only root Sessions may be claimed as rooms; `undefined` keeps
+   * the pre-header behavior for hand-built facts.
+   */
+  readonly root?: boolean
 }
 
 /** Account fields the policy reads from `ctx.identity`. */
@@ -89,6 +95,7 @@ const SESSION_READ_ACTIONS: readonly RemoteAccessAction[] = [
   'session/state',
   'session/wait',
   'commands/list',
+  'collaboration/branchInfo',
   'goals/get',
   'messageFeedback/list',
   'skills/list',
@@ -126,6 +133,8 @@ const SESSION_WRITE_ACTIONS: readonly RemoteAccessAction[] = [
   'collaboration/claimRoom',
   'collaboration/sendWithRoom',
   'collaboration/admitRoomContext',
+  'collaboration/leaveRoom',
+  'collaboration/removeOccupant',
   'agentTeams/setEnabled',
   'workspace/archiveSession',
   'workspace/unarchiveSession',
@@ -398,7 +407,9 @@ export function createLocalIdentityAccessPolicy(
         if (childOf.has(sessionId)) continue
         const room = facts.occupancy(sessionId)
         if (room === undefined) {
-          claimIds.add(sessionId)
+          // Occupancy is unknown: the Session may be a subagent child, a
+          // branch, or any other non-room conversation. Never offer a claim
+          // for a Session the collaboration service has not seen as a room.
           if (account.admin) readIds.add(sessionId)
           continue
         }
@@ -410,11 +421,15 @@ export function createLocalIdentityAccessPolicy(
           for (const child of ownedChildren(actor, room)) {
             readIds.add(child)
             writeIds.add(child)
-            if (created) creatorIds.add(child)
+            // The human who opened a branch owns that Session: they receive
+            // every session-scoped action on it, exactly like a room creator
+            // on their room. Legacy children without a recorded owner stay
+            // creator-scoped so other occupants do not gain full control.
+            if (created || room.childOwners[child] === actor) creatorIds.add(child)
           }
           continue
         }
-        if (isUnclaimed(room)) {
+        if (isUnclaimed(room) && room.root !== false) {
           claimIds.add(sessionId)
           if (account.admin) readIds.add(sessionId)
           continue

@@ -21,6 +21,7 @@ export interface ActorRosterSnapshot {
  * Display name for a Host occupant or Settings mention, else the raw id.
  * @param snapshot - current roster.
  * @param actorId - occupant or mention route id.
+ * @returns the roster display name, or `actorId` when no row matches.
  */
 export function occupantName(snapshot: ActorRosterSnapshot, actorId: string): string {
   for (const row of snapshot.actors) {
@@ -78,6 +79,10 @@ export class ActorRosterStore {
   }
   private readonly listeners = new Set<() => void>()
 
+  /**
+   * Current roster snapshot for `useSyncExternalStore`.
+   * @returns the latest snapshot handed to {@link set} and its partial updates.
+   */
   getSnapshot(): ActorRosterSnapshot {
     return this.snapshot
   }

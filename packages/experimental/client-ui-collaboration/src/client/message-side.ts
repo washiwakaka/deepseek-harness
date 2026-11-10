@@ -8,6 +8,7 @@ export type RoomMessageSide = 'self' | 'other' | 'ai'
  * @param kind - occupant kind on the durable room event.
  * @param actorId - occupant id on that event.
  * @param selectedHumanId - test author currently posting, or none.
+ * @returns `ai` for model lines, `self` for the selected human, otherwise `other`.
  */
 export function roomMessageSide(
   kind: ActorKind,

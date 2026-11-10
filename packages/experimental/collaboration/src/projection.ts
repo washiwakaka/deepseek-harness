@@ -32,6 +32,8 @@ const messageSchema = z.object({
   name: z.string().min(1),
   text: z.string(),
   mentions: z.array(actorIdSchema),
+  branchSessionId: sessionIdSchema.optional(),
+  assistantSeq: sessionSeqSchema.optional(),
 }).strict() as z.ZodType<CollaborationMessage>
 
 const collaborationMessageEventSchema = z.object({
@@ -42,6 +44,8 @@ const collaborationMessageEventSchema = z.object({
   name: z.string().min(1),
   text: z.string(),
   mentions: z.array(actorIdSchema),
+  branchSessionId: sessionIdSchema.optional(),
+  assistantSeq: sessionSeqSchema.optional(),
 }).strict() as z.ZodType<SessionEventMap['collaboration/message']>
 
 const branchOpenedEventSchema = z.object({
@@ -124,6 +128,7 @@ export type CollaborationEventType =
   | 'collaboration/branch-opened'
   | 'collaboration/actor-invoked'
   | 'collaboration/occupant'
+  | 'collaboration/occupant-removed'
 
 /** One event owned by the collaboration domain. */
 type CollaborationSessionEvent = SessionEvent<CollaborationEventType>
@@ -138,6 +143,7 @@ export function isCollaborationEvent(event: SessionEvent): event is Collaboratio
     || event.type === 'collaboration/branch-opened'
     || event.type === 'collaboration/actor-invoked'
     || event.type === 'collaboration/occupant'
+    || event.type === 'collaboration/occupant-removed'
 }
 
 /** Decode one persisted collaboration value and retain the schema failure as its cause. */
@@ -189,6 +195,8 @@ function applyCurrentEvent(
         name: data.name,
         text: data.text,
         mentions: data.mentions,
+        ...data.branchSessionId === undefined ? {} : { branchSessionId: data.branchSessionId },
+        ...data.assistantSeq === undefined ? {} : { assistantSeq: data.assistantSeq },
       }
       const next = { ...state, messages: [...state.messages, message] }
       return data.kind === 'human' ? withOccupant(next, data.actorId) : next
@@ -196,6 +204,11 @@ function applyCurrentEvent(
     case 'collaboration/occupant': {
       const data = parsePersisted(event.type, occupantEventSchema, event.data)
       return withOccupant(state, data.actorId)
+    }
+    case 'collaboration/occupant-removed': {
+      const data = parsePersisted(event.type, occupantEventSchema, event.data)
+      if (!state.occupants.includes(data.actorId)) return state
+      return { ...state, occupants: state.occupants.filter(id => id !== data.actorId) }
     }
     case 'collaboration/branch-opened': {
       const data = parsePersisted(event.type, branchOpenedEventSchema, event.data)

@@ -16,6 +16,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'collaboration/failed': { readonly reason: string }
     /** Identity is loaded and nobody is signed in. */
     'collaboration/unauthorized': { readonly reason: string }
+    /** The branch reply selected for publishing is already on the room. */
+    'collaboration/already-published': { readonly reason: string }
+    /** The branch or its room could not be resumed from persistence. */
+    'collaboration/child-missing': { readonly reason: string }
+    /** The durable collaboration projection has failed and the room is read-only. */
+    'collaboration/projection-failed': { readonly reason: string }
   }
 }
 
@@ -36,4 +42,12 @@ export interface CollaborationPostRequest {
 /** Started branch Session ids after a room post. */
 export interface CollaborationPostResult {
   readonly childSessionIds: readonly string[]
+  /** Mentioned AI occupant ids whose branch could not be started. */
+  readonly failedActorIds: readonly string[]
+}
+
+/** Room branch ownership of one Session, when it is a mention branch. */
+export interface CollaborationBranchInfo {
+  readonly roomId: string
+  readonly actorId: string
 }

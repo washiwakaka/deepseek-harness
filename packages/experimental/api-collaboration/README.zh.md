@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`collaboration` Remote 让浏览器列出 Config 占用者、列出某个真人可以 `@` 的设置模型、发送一条房间行、把分支答案发布到房间、写入尚未编译的房间上下文，以及带着该上下文发送草稿。提及子会话轮次仍由 `ctx.collaboration` 负责。
+`collaboration` Remote 让浏览器列出 Config 占用者、列出某个真人可以 `@` 的设置模型、发送一条房间行、把分支答案发布到房间、识别分支 Session、离开或移除占用者、写入尚未编译的房间上下文，以及带着该上下文发送草稿。提及子会话轮次仍由 `ctx.collaboration` 负责。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-与 `@deepseek-ai/dsh-experimental-collaboration` 和 Typert 一起从 overlay 挂载，不要从默认 Web remotes 列表挂载。`listActors()` 返回 id、kind 和 name。登录 Remote 在 `@deepseek-ai/dsh-experimental-api-identity`。`listMentionModels(actorId, signal)` 返回该真人可以 `@` 的设置模型。`postMessage(agent, { actorId, text, mentions }, signal)` 追加到该 Agent 的 Session，并返回已启动的分支 id；提及真人即邀请该占用者。`claimRoom(agent, actorId, signal)` 在空房间上记下创建人。`publish(agent, actorId, signal)` 把分支上最新 assistant 文本拷到房间。`admitRoomContext(agent, actorId, signal)` 记下尚未编译的房间增量且不 followup。`sendWithRoom(agent, text, actorId, signal)` 先 admit 再 followup 房间 Agent。非占用者得到 `collaboration/forbidden`。未登录发帖得到 `collaboration/unauthorized`。
+与 `@deepseek-ai/dsh-experimental-collaboration` 和 Typert 一起从 overlay 挂载，不要从默认 Web remotes 列表挂载。`listActors()` 返回 id、kind 和 name。登录 Remote 在 `@deepseek-ai/dsh-experimental-api-identity`。`listMentionModels(actorId, signal)` 返回该真人可以 `@` 的设置模型。`postMessage(agent, { actorId, text, mentions }, signal)` 追加到该 Agent 的 Session，并返回已启动的分支 id 以及 `failedActorIds`（没能启动分支的被 @ 模型）；提及真人即邀请该占用者。`claimRoom(agent, actorId, signal)` 在空房间上记下创建人。`publish(agent, actorId, assistantSeq, signal)` 把分支上最新 assistant 文本拷到房间；给了 `assistantSeq` 就拷那一条回复。房间 Agent 不在线时 Host 会冷恢复，同一回复重复发布会被拒绝（`collaboration/already-published`）。`branchInfo(agent, signal)` 返回分支 Session 所属的房间和 AI 占用者，不是分支时返回 `null`。`leaveRoom(agent, actorId, signal)` 移除调用者本人；`removeOccupant(agent, actorId, targetId, signal)` 让创建人移除另一位占用者。`admitRoomContext(agent, actorId, signal)` 记下尚未编译的房间增量且不 followup。`sendWithRoom(agent, text, actorId, signal)` 先 admit 再 followup 房间 Agent。非占用者得到 `collaboration/forbidden`。未登录发帖得到 `collaboration/unauthorized`。
 
 -----
 

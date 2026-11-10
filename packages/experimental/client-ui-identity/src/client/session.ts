@@ -27,6 +27,10 @@ export class IdentitySessionStore {
   }
   private readonly listeners = new Set<() => void>()
 
+  /**
+   * Current identity snapshot for `useSyncExternalStore`.
+   * @returns the latest snapshot handed to {@link set}.
+   */
   getSnapshot(): IdentitySessionSnapshot {
     return this.snapshot
   }

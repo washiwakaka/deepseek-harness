@@ -16,10 +16,27 @@ export interface CollaborationRemote {
   postMessage(
     sessionId: SessionId,
     request: CollaborationPostRequest,
-  ): Promise<{ ok: true; value?: { childSessionIds?: readonly string[] } } | { ok: false; error: Error }>
+  ): Promise<
+    | { ok: true; value?: { childSessionIds?: readonly string[]; failedActorIds?: readonly string[] } }
+    | { ok: false; error: Error }
+  >
   publish(
     sessionId: SessionId,
     actorId: string,
+    assistantSeq?: number,
+    assistantMessageId?: string,
+  ): Promise<{ ok: true } | { ok: false; error: Error }>
+  branchInfo(
+    sessionId: SessionId,
+  ): Promise<{ ok: true; value: { roomId: string; actorId: string } | null } | { ok: false; error: Error }>
+  leaveRoom(
+    sessionId: SessionId,
+    actorId: string,
+  ): Promise<{ ok: true } | { ok: false; error: Error }>
+  removeOccupant(
+    sessionId: SessionId,
+    actorId: string,
+    targetId: string,
   ): Promise<{ ok: true } | { ok: false; error: Error }>
   admitRoomContext(
     sessionId: SessionId,
@@ -52,7 +69,7 @@ export function firstHumanId(actors: readonly CollaborationActorRow[]): string |
  * @param text - non-empty room body.
  * @param actorId - test author; omitted uses the first human from `listActors`.
  * @param mentions - optional AI occupant ids to wake; omitted posts without a child turn.
- * @returns started branch Session ids; empty when no AI was mentioned.
+ * @returns started branch Session ids and mentioned AI ids whose branch failed to start.
  * @throws the Remote failure, or `collaboration/invalid-argument` when no human occupant exists.
  */
 export async function postRoomDraft(
@@ -61,7 +78,7 @@ export async function postRoomDraft(
   text: string,
   actorId?: string,
   mentions?: readonly string[],
-): Promise<readonly string[]> {
+): Promise<{ childSessionIds: readonly string[]; failedActorIds: readonly string[] }> {
   let authorId = actorId
   if (authorId === undefined) {
     const actors = await remote.listActors()
@@ -77,23 +94,77 @@ export async function postRoomDraft(
     ...mentions !== undefined && mentions.length > 0 ? { mentions } : {},
   })
   if (!posted.ok) throw posted.error
-  return posted.value?.childSessionIds ?? []
+  return {
+    childSessionIds: posted.value?.childSessionIds ?? [],
+    failedActorIds: posted.value?.failedActorIds ?? [],
+  }
 }
 
 /**
- * Copy the current branch's latest assistant text onto its room.
+ * Copy one assistant reply from the current branch onto its room.
  * @param remote - mounted `collaboration` namespace.
  * @param sessionId - branch Session.
  * @param actorId - human occupant publishing from the branch.
+ * @param target - reply to publish by seq or message id; omitted publishes the latest reply.
  * @throws the Remote failure.
  */
 export async function publishFromChild(
   remote: CollaborationRemote,
   sessionId: SessionId,
   actorId: string,
+  target?: { readonly assistantSeq?: number; readonly assistantMessageId?: string },
 ): Promise<void> {
-  const published = await remote.publish(sessionId, actorId)
+  const published = await remote.publish(sessionId, actorId, target?.assistantSeq, target?.assistantMessageId)
   if (!published.ok) throw published.error
+}
+
+/**
+ * Ask the Host whether this Session is a mention branch.
+ * @param remote - mounted `collaboration` namespace.
+ * @param sessionId - candidate branch Session.
+ * @returns the owning room and AI occupant, or `undefined` when it is not a branch or the call failed.
+ */
+export async function branchInfoOf(
+  remote: CollaborationRemote,
+  sessionId: SessionId,
+): Promise<{ roomId: string; actorId: string } | undefined> {
+  const info = await remote.branchInfo(sessionId)
+  if (!info.ok) return undefined
+  return info.value ?? undefined
+}
+
+/**
+ * Remove the calling human from this room.
+ * @param remote - mounted `collaboration` namespace.
+ * @param sessionId - room Session.
+ * @param actorId - human leaving the room.
+ * @throws the Remote failure.
+ */
+export async function leaveRoom(
+  remote: CollaborationRemote,
+  sessionId: SessionId,
+  actorId: string,
+): Promise<void> {
+  const left = await remote.leaveRoom(sessionId, actorId)
+  if (!left.ok) throw left.error
+}
+
+/**
+ * Remove one occupant from this room; the Host only allows the room creator.
+ * @param remote - mounted `collaboration` namespace.
+ * @param sessionId - room Session.
+ * @param actorId - room creator performing the removal.
+ * @param targetId - occupant to remove.
+ * @throws the Remote failure.
+ */
+export async function removeOccupant(
+  remote: CollaborationRemote,
+  sessionId: SessionId,
+  actorId: string,
+  targetId: string,
+): Promise<void> {
+  const removed = await remote.removeOccupant(sessionId, actorId, targetId)
+  if (!removed.ok) throw removed.error
 }
 
 /**
@@ -151,6 +222,7 @@ export async function claimRoom(
 /**
  * Whether `postRoomDraft` rejected because the Config roster has no human occupant.
  * @param error - rejection from `postRoomDraft`.
+ * @returns true only for the Remote `no human occupant` invalid-argument failure.
  */
 export function isNoHumanPostError(error: unknown): boolean {
   const remote = remoteErrorOf(error)

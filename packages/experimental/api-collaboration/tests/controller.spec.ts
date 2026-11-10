@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import CollaborationService, { CollaborationError } from '@deepseek-ai/dsh-experimental-collaboration'
+import CollaborationService, { ActorId, CollaborationError } from '@deepseek-ai/dsh-experimental-collaboration'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
@@ -116,15 +116,123 @@ describe('collaboration Remote', () => {
     const child = ctx.agents.get(childId as never)
     expect(child).toBeDefined()
     await child!.whenIdle()
-    await api.publish(child!, 'alice', new AbortController().signal)
+    await api.publish(child!, 'alice', undefined, undefined, new AbortController().signal)
     expect(room.session.snapshotEvents().some(event =>
       event.type === 'collaboration/message' && event.data.kind === 'ai' && event.data.text === 'ok',
     )).toBe(true)
     try {
-      await api.publish(room, 'alice', new AbortController().signal)
+      await api.publish(room, 'alice', undefined, undefined, new AbortController().signal)
       expect.unreachable()
     } catch (error: unknown) {
       expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/invalid-argument' })
+    }
+  })
+
+  it('identifies branch Sessions and refuses a duplicate publish', async () => {
+    const { api, ctx, room } = await setup()
+    const posted = await api.postMessage(
+      room,
+      { actorId: 'alice', text: '@A look', mentions: ['model-a'] },
+      new AbortController().signal,
+    )
+    const child = ctx.agents.get(posted.childSessionIds[0] as never)
+    expect(child).toBeDefined()
+    await child!.whenIdle()
+    expect(api.branchInfo(child!, new AbortController().signal)).toEqual({
+      roomId: 'room',
+      actorId: 'model-a',
+    })
+    expect(api.branchInfo(room, new AbortController().signal)).toBeNull()
+    await api.publish(child!, 'alice', undefined, undefined, new AbortController().signal)
+    try {
+      await api.publish(child!, 'alice', undefined, undefined, new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/already-published' })
+    }
+  })
+
+  it('leaves and removes occupants', async () => {
+    const { api, room } = await setup()
+    await api.postMessage(
+      room,
+      { actorId: 'alice', text: '@Bob join', mentions: ['bob'] },
+      new AbortController().signal,
+    )
+    await api.leaveRoom(room, 'bob', new AbortController().signal)
+    try {
+      await api.postMessage(room, { actorId: 'bob', text: 'hi' }, new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/forbidden' })
+    }
+    await api.postMessage(
+      room,
+      { actorId: 'alice', text: '@Bob back', mentions: ['bob'] },
+      new AbortController().signal,
+    )
+    await api.removeOccupant(room, 'alice', 'bob', new AbortController().signal)
+    try {
+      await api.removeOccupant(room, 'alice', 'bob', new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/invalid-argument' })
+    }
+  })
+
+  it('publishes by seq and by message id, maps result ids, and maps projection failures', async () => {
+    const { api, ctx, room } = await setup()
+    const posted = await api.postMessage(
+      room,
+      { actorId: 'alice', text: '@A look', mentions: ['model-a'] },
+      new AbortController().signal,
+    )
+    const child = ctx.agents.get(posted.childSessionIds[0] as never)
+    await child!.whenIdle()
+    const reply = child!.session.snapshotEvents()
+      .find(event => event.type === 'assistant/message' && event.seq >= child!.session.inheritedEventCount)
+    if (reply === undefined) throw new Error('expected a branch reply')
+    await api.publish(child!, 'alice', reply.seq, undefined, new AbortController().signal)
+    const second = await setup()
+    const postedSecond = await second.api.postMessage(
+      second.room,
+      { actorId: 'alice', text: '@A more', mentions: ['model-a'] },
+      new AbortController().signal,
+    )
+    const childSecond = second.ctx.agents.get(postedSecond.childSessionIds[0] as never)
+    await childSecond!.whenIdle()
+    const replySecond = childSecond!.session.snapshotEvents()
+      .find(event => event.type === 'assistant/message' && event.seq >= childSecond!.session.inheritedEventCount)
+    if (replySecond === undefined || replySecond.type !== 'assistant/message') {
+      throw new Error('expected a second branch reply')
+    }
+    await second.api.publish(childSecond!, 'alice', undefined, replySecond.data.message.id, new AbortController().signal)
+
+    ctx.collaboration.postMessage = async () => ({
+      childSessionIds: [SessionId('child-9')],
+      failedActorIds: [ActorId('model-a')],
+    })
+    await expect(api.postMessage(room, { actorId: 'alice', text: 'hi' }, new AbortController().signal))
+      .resolves.toEqual({ childSessionIds: ['child-9'], failedActorIds: ['model-a'] })
+    ctx.collaboration.postMessage = async () => {
+      throw new CollaborationError('projection broke', 'COLLAB_PROJECTION_FAILED')
+    }
+    try {
+      await api.postMessage(room, { actorId: 'alice', text: 'hi' }, new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/projection-failed' })
+    }
+    ctx.collaboration.leaveRoom = async () => { throw new Error('boom') }
+    await expect(api.leaveRoom(room, 'alice', new AbortController().signal)).rejects.toThrow('boom')
+    ctx.collaboration.leaveRoom = async () => {
+      throw new CollaborationError('not an occupant', 'COLLAB_ACCESS_DENIED')
+    }
+    try {
+      await api.leaveRoom(room, 'alice', new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/forbidden' })
     }
   })
 
@@ -185,7 +293,7 @@ describe('collaboration Remote', () => {
     ctx.collaboration.publishFromChild = async () => {
       throw new Error('boom')
     }
-    await expect(api.publish(room, 'alice', new AbortController().signal)).rejects.toThrow('boom')
+    await expect(api.publish(room, 'alice', undefined, undefined, new AbortController().signal)).rejects.toThrow('boom')
   })
 
   it('prefers abort over a mapped publish failure', async () => {
@@ -195,7 +303,7 @@ describe('collaboration Remote', () => {
       abort.abort()
       throw new CollaborationError('session is not a collaboration branch', 'COLLAB_NOT_BRANCH')
     }
-    await expect(api.publish(room, 'alice', abort.signal)).rejects.toThrow()
+    await expect(api.publish(room, 'alice', undefined, undefined, abort.signal)).rejects.toThrow()
   })
 
   it('maps empty text to collaboration/invalid-argument', async () => {
@@ -211,7 +319,7 @@ describe('collaboration Remote', () => {
   it('maps unclassified collaboration failures to collaboration/failed', async () => {
     const { api, ctx, room } = await setup()
     ctx.collaboration.postMessage = async () => {
-      throw new CollaborationError('AI child is not live', 'COLLAB_CHILD_MISSING')
+      throw new CollaborationError('something else broke', 'COLLAB_UNCLASSIFIED')
     }
     try {
       await api.postMessage(room, { actorId: 'alice', text: 'hello' }, new AbortController().signal)
@@ -255,7 +363,7 @@ describe('collaboration Remote', () => {
     expect(room.session.snapshotEvents().some(event => event.type === 'turn/start')).toBe(false)
   })
 
-  it('maps admit failures to collaboration/failed', async () => {
+  it('maps admit failures to collaboration/child-missing', async () => {
     const { api, ctx, room } = await setup()
     ctx.collaboration.admitRoomContext = async () => {
       throw new CollaborationError('AI child is not live', 'COLLAB_CHILD_MISSING')
@@ -264,7 +372,7 @@ describe('collaboration Remote', () => {
       await api.admitRoomContext(room, 'alice', new AbortController().signal)
       expect.unreachable()
     } catch (error: unknown) {
-      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/failed' })
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/child-missing' })
     }
   })
 
@@ -329,7 +437,7 @@ describe('collaboration Remote', () => {
       await api.sendWithRoom(room, 'hello', 'alice', new AbortController().signal)
       expect.unreachable()
     } catch (error: unknown) {
-      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/failed' })
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/child-missing' })
     }
   })
 

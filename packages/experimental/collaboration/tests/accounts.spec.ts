@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -136,6 +136,89 @@ describe('collaboration identity posts', () => {
       action: 'session/list',
       resources: [{ kind: 'session', id: sessionId }],
     }).kind).toBe('allow')
+  })
+
+  it('keeps a persisted room listable after a full Host restart', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-collab-accounts-restart-'))
+    roots.push(storageRoot)
+    const mount = async () => {
+      const ctx = new Context()
+      contexts.push(ctx)
+      new MemoryCredentials(ctx)
+      await mountAgentLoopTestDependencies(ctx)
+      await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
+      await ctx.plugin(AgentLoop, { agents: [] })
+      await ctx.plugin(IdentityService, {})
+      await ctx.plugin(CollaborationService, { actors: [] })
+      await ctx.plugin(RemoteAccessService)
+      ctx.llm.registerAdapter(['mock'], new MockAdapter([]))
+      return ctx
+    }
+    const first = await mount()
+    await first.identity.registerPassword('alice', 'password1', 'Alice')
+    await first.identity.loginPassword('alice', 'password1')
+    const room = await first.agentLoop.create(SessionId('room'), { provider: 'mock', model: 'mock' })
+    await first.collaboration.postMessage(room.session, { actorId: ActorId('alice'), text: 'hello' })
+    const roomId = room.session.id
+    contexts.splice(contexts.indexOf(first), 1)
+    await first.fiber.dispose()
+
+    const second = await mount()
+    expect(second.sessions.get(roomId)).toBeUndefined()
+    // The in-memory test credential store does not survive the restart; the
+    // room occupancy under test lives in the persisted Session log.
+    await second.identity.registerPassword('alice', 'password1', 'Alice')
+    const alice = caller(second, 'peer-alice' as PeerId)
+    await alice.identity.loginPassword('alice', 'password1')
+    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    expect(second.remoteAccess.decide({
+      principal: alicePrincipal,
+      action: 'session/list',
+      resources: [{ kind: 'session', id: roomId }],
+    }).kind).toBe('allow')
+    await second.identity.registerPassword('bob', 'password1', 'Bob')
+    const bob = caller(second, 'peer-bob' as PeerId)
+    await bob.identity.loginPassword('bob', 'password1')
+    const bobPrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-bob' as PeerId }
+    expect(second.remoteAccess.decide({
+      principal: bobPrincipal,
+      action: 'session/list',
+      resources: [{ kind: 'session', id: roomId }],
+    }).kind).not.toBe('allow')
+  })
+
+  it('drops deleted Sessions from the occupancy cache', async () => {
+    const { ctx } = await setup()
+    await ctx.plugin(RemoteAccessService)
+    await ctx.identity.registerPassword('alice', 'password1', 'Alice')
+    await ctx.identity.loginPassword('alice', 'password1')
+    const handle = await ctx.agents.create({
+      sessionId: SessionId('prune-room'),
+      agentOptions: { provider: 'mock', model: 'mock' },
+    })
+    await ctx.collaboration.postMessage(handle.agent.session, { actorId: ActorId('alice'), text: 'hello' })
+    const roomId = handle.agent.session.id
+    await handle.dispose()
+    const alice = caller(ctx, 'peer-alice' as PeerId)
+    await alice.identity.loginPassword('alice', 'password1')
+    const principal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    expect(ctx.remoteAccess.decide({
+      principal,
+      action: 'session/list',
+      resources: [{ kind: 'session', id: roomId }],
+    }).kind).toBe('allow')
+    const root = roots[roots.length - 1]!
+    for (const entry of readdirSync(root, { recursive: true }).map((name): string => String(name))) {
+      if (entry.split(/[\\/]/).at(-1) !== 'prune-room') continue
+      rmSync(join(root, entry), { recursive: true, force: true })
+    }
+    await vi.waitFor(() => {
+      expect(ctx.remoteAccess.decide({
+        principal,
+        action: 'session/list',
+        resources: [{ kind: 'session', id: roomId }],
+      }).kind).not.toBe('allow')
+    })
   })
 
   it('authorizes session/create on a workspace resource and invalidates ACL on workspace/session changes', async () => {

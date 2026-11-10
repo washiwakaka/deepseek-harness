@@ -100,7 +100,7 @@ export class InputHub implements SessionInputResolver {
     const existing = this.shells.get(binding)
     if (existing !== undefined) return existing
     const { session, ctx: actx } = binding
-    const shell = new SessionInputShell({
+    const shell: SessionInputShell = new SessionInputShell({
       actx,
       submissionState: () => {
         const state = session.getSnapshot()
@@ -125,7 +125,7 @@ export class InputHub implements SessionInputResolver {
       inputTriggers: () => this.controller(actx),
       popup: () => this.popup(actx),
       inbox: session.projections.faceOf('inbox') as ObservableSnapshot<InboxState | undefined>,
-      defaultSink: (text, attachmentIds, mode, signal, accept) => this.sink(session, text, attachmentIds, mode, signal, accept),
+      defaultSink: (text, attachmentIds, mode, signal, accept) => this.sink(session, text, attachmentIds, mode, signal, accept, shell),
       quoteRemoveLabel: () => this.t('quote.remove'),
       quoteInsertionAllowed: () => {
         const state = session.getSnapshot()
@@ -266,16 +266,30 @@ export class InputHub implements SessionInputResolver {
    * so there is exactly one path; a refused or failed prompt is an ordinary
    * prompt failure (banner via promptError, draft kept in the composer).
    */
-  private sink(
+  private async sink(
     session: SessionFace,
     text: string,
     attachmentIds: readonly DraftAttachmentId[],
     mode: InputSubmitMode,
     signal: AbortSignal,
     accept: () => void,
+    shell?: SessionInputShell,
   ): Promise<SubmitOutcome> {
+    const occurrences = shell?.snapshot.occurrences ?? []
+    if (attachmentIds.length === 0 && occurrences.length > 0) {
+      const outcome = await this.rootCtx.serial('conversation/before-send', {
+        sessionId: String(session.sessionId),
+        text,
+        draft: shell?.snapshot.draft ?? text,
+        occurrences,
+        attachmentCount: attachmentIds.length,
+        mode,
+      })
+      if (outcome !== undefined) return outcome
+    }
     if (text === '' && attachmentIds.length === 0) {
-      return session.prompt([], mode, signal).then(result => result.ok ? { kind: 'success' } : { kind: 'error' })
+      const result = await session.prompt([], mode, signal)
+      return result.ok ? { kind: 'success' } : { kind: 'error' }
     }
     return this.conversation().sendSession(session, text, attachmentIds, mode, signal, accept)
   }

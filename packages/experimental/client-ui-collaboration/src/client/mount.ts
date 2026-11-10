@@ -16,12 +16,13 @@ import { ActorRosterStore } from './actor-roster.ts'
 import { RoomBadge, type RoomBadgeInjected } from './RoomBadge.tsx'
 import { RoomMessageView, type RoomMessageInjected } from './RoomMessageView.tsx'
 import { RoomPostButton, type RoomPostInjected } from './RoomPostButton.tsx'
+import { BranchPublishAction, type BranchPublishInjected } from './BranchPublishAction.tsx'
 import { RoomThinkingStatus, type RoomThinkingStatusInjected } from './RoomThinkingStatus.tsx'
 import { RoomThinkingView, type RoomThinkingInjected } from './RoomThinkingView.tsx'
 import { collaborationMessageDefinition } from './message-definition.ts'
 import { collaborationThinkingDefinition } from './thinking-definition.ts'
-import { collaborationMentionSource } from './mention-source.ts'
-import { postRoomDraft, publishFromChild, sendWithRoom } from './post-draft.ts'
+import { collaborationMentionSource, roomMentionIds } from './mention-source.ts'
+import { branchInfoOf, leaveRoom, postRoomDraft, publishFromChild, removeOccupant, sendWithRoom } from './post-draft.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type CollaborationRoomKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -59,6 +60,37 @@ function registerCollaborationUi(ctx: ClientContext): void {
   )
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'client-ui-collaboration: dictionaries')
   const actors = new ActorRosterStore()
+  // An ordinary composer Send carrying room mention chips is a room post:
+  // route it to collaboration/postMessage instead of the room Agent prompt,
+  // so @-mentioned models and humans are never silently dropped.
+  ctx.effect(() => ctx.on('conversation/before-send', async (request) => {
+    if (request.attachmentCount > 0) return undefined
+    const snapshot = actors.getSnapshot()
+    const humanId = snapshot.selectedHumanId
+    if (humanId === undefined) return undefined
+    if (snapshot.branchIds.includes(request.sessionId)) return undefined
+    const mentions = roomMentionIds(request.occurrences, [
+      ...snapshot.actors.filter(actor => actor.kind === 'human' && actor.id !== humanId).map(actor => actor.id),
+      ...snapshot.mentionModels.map(model => model.id),
+    ])
+    if (mentions.length === 0) return undefined
+    const text = request.draft.trim()
+    if (text === '') return undefined
+    try {
+      const posted = await postRoomDraft(
+        ctx.remote.collaboration,
+        request.sessionId as SessionId,
+        text,
+        humanId,
+        mentions,
+      )
+      rememberMentionedBranches(actors, posted.childSessionIds)
+      return { kind: 'success' as const }
+    } catch (postError) {
+      void postError
+      return { kind: 'error' as const }
+    }
+  }), 'client-ui-collaboration: before-send room mentions')
   const t = ctx.locale.bind(NS)
   ctx.effect(
     () => ctx.inputTriggers.registerSource(collaborationMentionSource(actors, t)),
@@ -150,7 +182,17 @@ function registerCollaborationUi(ctx: ClientContext): void {
   }, 'client-ui-collaboration: listActors')
   const auth = (): RoomBadgeInjected => ({
     selectHuman: (id) => { actors.selectHuman(id) },
-    hooks: { actors },
+    leave: async (targetSessionId) => {
+      const humanId = actors.getSnapshot().selectedHumanId
+      if (humanId === undefined) return
+      await leaveRoom(ctx.remote.collaboration, targetSessionId as SessionId, humanId)
+    },
+    removeOccupant: async (targetSessionId, targetId) => {
+      const humanId = actors.getSnapshot().selectedHumanId
+      if (humanId === undefined) return
+      await removeOccupant(ctx.remote.collaboration, targetSessionId as SessionId, humanId, targetId)
+    },
+    hooks: { actors, sessions: ctx.sessions.list },
   })
   ctx.slots.inject(
     'conversation.header.leading',
@@ -203,35 +245,71 @@ function registerCollaborationUi(ctx: ClientContext): void {
           if (humanId === undefined) return
           await publishFromChild(ctx.remote.collaboration, sessionId, humanId)
         },
+        branchInfo: async (targetSessionId) => {
+          const info = await branchInfoOf(ctx.remote.collaboration, targetSessionId as SessionId)
+          return info !== undefined
+        },
         post: async (text, mentions = []) => {
           const snapshot = actors.getSnapshot()
-          rememberMentionedBranches(actors, await postRoomDraft(
+          const posted = await postRoomDraft(
             ctx.remote.collaboration,
             sessionId,
             text,
             snapshot.selectedHumanId,
             mentions.length > 0 ? mentions : undefined,
-          ))
+          )
+          rememberMentionedBranches(actors, posted.childSessionIds)
+          if (posted.failedActorIds.length > 0) {
+            return t('send.partialFailed', { names: posted.failedActorIds.join(', ') })
+          }
+          return undefined
         },
         promptWithRoom: async (text, mentions = []) => {
           const snapshot = actors.getSnapshot()
           if (mentions.length > 0) {
-            rememberMentionedBranches(actors, await postRoomDraft(
+            const posted = await postRoomDraft(
               ctx.remote.collaboration,
               sessionId,
               text,
               snapshot.selectedHumanId,
               mentions,
-            ))
-            return
+            )
+            rememberMentionedBranches(actors, posted.childSessionIds)
+            if (posted.failedActorIds.length > 0) {
+              return t('send.partialFailed', { names: posted.failedActorIds.join(', ') })
+            }
+            return undefined
           }
           const humanId = snapshot.selectedHumanId
-          if (humanId === undefined) return
+          if (humanId === undefined) return undefined
           await sendWithRoom(ctx.remote.collaboration, sessionId, text, humanId)
+          return undefined
         },
         hooks: { actors, sessions: ctx.sessions.list },
       }),
     }, RoomPostButton),
+  )
+  ctx.slots.inject(
+    'conversation.chat.assistant-actions',
+    () => ctx.slots.register({
+      name: 'conversation.chat.assistant-actions',
+      id: 'collaboration-publish-reply',
+      order: 20,
+      locale: NS,
+      inject: (sessionId: SessionId): BranchPublishInjected => ({
+        sessionId,
+        publishReply: async (messageId) => {
+          const humanId = actors.getSnapshot().selectedHumanId
+          if (humanId === undefined) return
+          await publishFromChild(ctx.remote.collaboration, sessionId, humanId, { assistantMessageId: messageId })
+        },
+        branchInfo: async (targetSessionId) => {
+          const info = await branchInfoOf(ctx.remote.collaboration, targetSessionId as SessionId)
+          return info !== undefined
+        },
+        hooks: { actors, sessions: ctx.sessions.list },
+      }),
+    }, BranchPublishAction),
   )
 }
 

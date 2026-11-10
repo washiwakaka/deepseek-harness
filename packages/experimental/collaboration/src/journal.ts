@@ -63,7 +63,8 @@ export class CollaborationJournal {
       | { type: 'collaboration/message'; data: SessionEventMap['collaboration/message'] }
       | { type: 'collaboration/branch-opened'; data: SessionEventMap['collaboration/branch-opened'] }
       | { type: 'collaboration/actor-invoked'; data: SessionEventMap['collaboration/actor-invoked'] }
-      | { type: 'collaboration/occupant'; data: SessionEventMap['collaboration/occupant'] },
+      | { type: 'collaboration/occupant'; data: SessionEventMap['collaboration/occupant'] }
+      | { type: 'collaboration/occupant-removed'; data: SessionEventMap['collaboration/occupant-removed'] },
   ): Promise<void> {
     session.append(event.type, event.data)
     await this.ctx.sessions.flush(session)
