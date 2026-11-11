@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包是协作房间的 Web 展示。它加上标题栏标记，让你能看出 overlay 已加载；把持久的 `collaboration/message` 画成 Chat 行；在 Composer 的 `@` 菜单里列出 Config 的 AI 占用者；并在 Composer 工具行放一个小按钮，通过 `collaboration.postMessage` 发送草稿。回车和原来的发送按钮仍走 Session prompt；但草稿带房间提及 chip 时会改走 `collaboration.postMessage`，被 @ 的模型和真人不会被静默丢掉。
+本包是协作房间的 Web 展示：标题栏标记显示 overlay 已加载；持久的 `collaboration/message` 画成 Chat 行；Composer 的 `@` 菜单列出 Config 的 AI 占用者；工具行小按钮通过 `collaboration.postMessage` 发送草稿。回车和原来的发送按钮仍走 Session prompt；但草稿带提及 chip 时会改走 `collaboration.postMessage`，被 @ 的模型和真人不会被静默丢掉。在提及分支内，带模型 chip 的发送改走 `collaboration.postBranchMessage`，在子分支里唤起这些模型，方便属主在工作现场交叉验证。
 
 ## 目录
 
@@ -43,7 +43,7 @@ dsh plugin --profile web add @deepseek-ai/dsh-experimental-collaboration-profile
 <details>
 <summary>实现内部 — 点击展开</summary>
 
-Client 导出先挂载生成的 collaboration Remote，再通过 Cordis effect 注册 locale 词典、一个 `order: -10` 的 `@` source（名为 `models`）、`conversation.header.leading` 标记、按 key 的 Chat 渲染器，以及 `conversation.input.right` 上的控件。标题栏标记用 `listActors` 拉占用者，写入 `ActorRosterStore`。存在 `ctx.identitySession` 时跟那个已登录账号，不再用 Config 真人开关。会话可见性由 Host ACL 决定，Client 不再过滤侧栏。切换真人等于换一套视图：恢复该真人上次的 Session；没有则 `clearSession`，不会留下上一个人的会话。`isOwnedBranch` 仍用来控制提及分支上的「发到房间」。`@` 候选项从 `listActors` 取其他真人，并按当前真人调用 `listMentionModels`。Conversation Definition 匹配 `collaboration/message` 和 `collaboration/actor-invoked`。消息建成带 `actorId` 的 `collaboration-message` Chat node，好按当前测试真人摆位置。invoke 会在房间里开一行思考行，一直留到那个 AI 的已发布回复回到房间；工作本身仍留在分支上，直到「推送到房间」。页面刷新后也会给「推送到房间」：按钮用 `collaboration/branchInfo` 问 Host 当前 Session 是不是分支，不只靠这个 Client 的内存记录。「发到房间」读取该 Session 的 `useInput` 草稿和提及 chip，以当前选中的真人调用 `postMessage` 并带上这些提及 id，成功后清空草稿。「带房间发送」在草稿点名了模型或其他真人时同样 `postMessage`；否则调用 `sendWithRoom`。两个按钮都会在 Remote 未返回时把花名册的 `thinking` 打开，Composer dock 显示「深度求索中」。释放插件 fiber 会去掉全部注册和 Remote 挂载。
+Client 导出先挂载生成的 collaboration Remote，再通过 Cordis effect 注册 locale 词典、一个 `order: -10` 的 `@` source（名为 `models`）、`conversation.header.leading` 标记、按 key 的 Chat 渲染器，以及 `conversation.input.right` 上的控件。标题栏标记用 `listActors` 拉占用者，写入 `ActorRosterStore`。存在 `ctx.identitySession` 时跟那个已登录账号，不再用 Config 真人开关。会话可见性由 Host ACL 决定，Client 不再过滤侧栏。切换真人等于换一套视图：恢复该真人上次的 Session；没有则 `clearSession`，不会留下上一个人的会话。`isOwnedBranch` 仍用来控制提及分支上的「发到房间」。`@` 候选项从 `listActors` 取其他真人，并按当前真人调用 `listMentionModels`。Conversation Definition 匹配 `collaboration/message` 和 `collaboration/actor-invoked`。消息建成带 `actorId` 的 `collaboration-message` Chat node，好按当前测试真人摆位置。invoke 会在房间里开一行思考行，一直留到那个 AI 的已发布回复回到房间；工作本身仍留在分支上，直到「推送到房间」。页面刷新后也会给「推送到房间」：按钮用 `collaboration/branchInfo` 问 Host 当前 Session 是不是分支，不只靠这个 Client 的内存记录。「发到房间」读取该 Session 的 `useInput` 草稿和提及 chip，以当前选中的真人调用 `postMessage` 并带上这些提及 id，成功后清空草稿。「带房间发送」在草稿点名了模型或其他真人时同样 `postMessage`；否则调用 `sendWithRoom`。`conversation/before-send` 对普通发送做同样的分流：房间里的提及 chip 变成 `postMessage`，分支内的模型 chip 变成打开子分支的 `postBranchMessage`；`isNestedBranch` 在当前 Session 本身是子分支时把发布文案切到父分支。两个按钮都会在 Remote 未返回时把花名册的 `thinking` 打开，Composer dock 显示「深度求索中」。释放插件 fiber 会去掉全部注册和 Remote 挂载。
 
 </details>
 

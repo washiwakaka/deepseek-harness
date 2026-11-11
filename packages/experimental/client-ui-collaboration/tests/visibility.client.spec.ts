@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-experimental-collaboration/client'
-import { isOwnedBranch } from '../src/client/visibility.ts'
+import { isNestedBranch, isOwnedBranch } from '../src/client/visibility.ts'
 
 const ROOM = SessionId('room')
 const BRANCH = SessionId('branch')
@@ -49,6 +49,43 @@ describe('collaboration branch ownership', () => {
     expect(isOwnedBranch('bob', snapshot, bobs)).toBe(true)
     expect(isOwnedBranch(undefined, snapshot, BRANCH)).toBe(false)
     expect(isOwnedBranch('alice', snapshot, ROOM)).toBe(false)
+  })
+
+  it('recognizes a sub-branch whose parent is itself a branch', () => {
+    const sub = SessionId('sub-branch')
+    const snapshot = list({
+      [ROOM]: {
+        state: 'ready',
+        error: null,
+        values: {
+          collaboration: {
+            occupants: ['alice'] as never,
+            children: { aliceA: BRANCH },
+            childOwners: { [BRANCH]: 'alice' } as never,
+            messages: [],
+            watermarks: {},
+          },
+        },
+      },
+      [BRANCH]: {
+        state: 'ready',
+        error: null,
+        values: {
+          collaboration: {
+            occupants: ['alice'] as never,
+            children: { aliceB: sub },
+            childOwners: { [sub]: 'alice' } as never,
+            messages: [],
+            watermarks: {},
+          },
+        },
+      },
+      [sub]: { state: 'ready', error: null, values: {} },
+    })
+    expect(isNestedBranch(snapshot, sub)).toBe(true)
+    expect(isNestedBranch(snapshot, BRANCH)).toBe(false)
+    expect(isNestedBranch(snapshot, ROOM)).toBe(false)
+    expect(isOwnedBranch('alice', snapshot, sub)).toBe(true)
   })
 
   it('treats a child without owner as shared among occupants', () => {

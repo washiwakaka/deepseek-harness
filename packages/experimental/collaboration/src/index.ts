@@ -315,13 +315,7 @@ export class CollaborationService extends Service {
    * @returns started branch Session ids; empty when no AI was mentioned.
    */
   async postMessage(session: Session, request: PostMessageRequest): Promise<PostMessageResult> {
-    const textBytes = Buffer.byteLength(request.text, 'utf8')
-    if (textBytes > this.maxMessageBytes) {
-      throw new CollaborationError('message exceeds maxMessageBytes', 'COLLAB_INVALID_ARGUMENT')
-    }
-    if (request.text.length === 0) {
-      throw new CollaborationError('message text must be non-empty', 'COLLAB_INVALID_ARGUMENT')
-    }
+    this.assertPostText(request.text)
     const author = this.postingHuman(request.actorId)
     const resolved = await this.resolveMentions(author, request.mentions ?? [])
     const childSessionIds: SessionId[] = []
@@ -367,6 +361,109 @@ export class CollaborationService extends Service {
       }
     })
     return { childSessionIds, failedActorIds }
+  }
+
+  /**
+   * Refuse an empty post or one over the configured byte limit.
+   * @param text - post body from a room or branch composer.
+   */
+  private assertPostText(text: string): void {
+    if (Buffer.byteLength(text, 'utf8') > this.maxMessageBytes) {
+      throw new CollaborationError('message exceeds maxMessageBytes', 'COLLAB_INVALID_ARGUMENT')
+    }
+    if (text.length === 0) {
+      throw new CollaborationError('message text must be non-empty', 'COLLAB_INVALID_ARGUMENT')
+    }
+  }
+
+  /**
+   * Append one line inside a mention branch and wake the AI occupants it
+   * mentions, so the branch owner can cross-check models without returning
+   * to the room. Each mentioned model works in a sub-branch seeded from this
+   * branch; its replies publish back to this branch like a branch reply
+   * publishes to its room. Only the branch owner may invoke from a branch,
+   * and human mentions stay a room-level gesture.
+   * @param session - live branch Session started by a mention.
+   * @param request - author, text, and AI mentions.
+   * @returns started sub-branch Session ids; empty when no AI was mentioned.
+   */
+  async postBranchMessage(session: Session, request: PostMessageRequest): Promise<PostMessageResult> {
+    this.assertPostText(request.text)
+    const author = this.postingHuman(request.actorId)
+    const mention = lastMentionSource(session)
+    if (mention === undefined || session.header.parentSession === undefined) {
+      throw new CollaborationError(
+        `session "${session.id}" is not a collaboration branch`,
+        'COLLAB_NOT_BRANCH',
+      )
+    }
+    this.assertBranchOwner(session, mention.roomId, author)
+    const resolved = await this.resolveMentions(author, request.mentions ?? [])
+    if (resolved.humans.length > 0) {
+      throw new CollaborationError(
+        'human mentions are not available inside a branch; post to the room instead',
+        'COLLAB_INVALID_ARGUMENT',
+      )
+    }
+    const childSessionIds: SessionId[] = []
+    const failedActorIds: ActorId[] = []
+    await this.journal.transact(session.id, async () => {
+      await this.journal.appendAndFlush(session, {
+        type: 'collaboration/message',
+        data: {
+          version: 1,
+          id: CollaborationMessageId(randomUUID()),
+          actorId: author.id,
+          kind: author.kind,
+          name: author.name,
+          text: request.text,
+          mentions: resolved.ais.map(recipient => recipient.id),
+        },
+      })
+      if (resolved.ais.length === 0) return
+      const state = this.journal.state(session)
+      const throughSeq = state.messages.at(-1)?.seq
+      if (throughSeq === undefined) {
+        throw new CollaborationError('branch has no events to compile', 'COLLAB_EMPTY_ROOM')
+      }
+      // The branch line is durable at this point; a sub-branch that fails to
+      // start is reported like a room mention failure, not a failed post.
+      for (const recipient of resolved.ais) {
+        try {
+          childSessionIds.push(await this.startActor(session, author, recipient, throughSeq))
+        } catch (startError) {
+          void startError
+          failedActorIds.push(recipient.id)
+        }
+      }
+    })
+    return { childSessionIds, failedActorIds }
+  }
+
+  /**
+   * Refuse an invoke from anyone but the branch's recorded owner. A legacy
+   * branch without a recorded owner admits any occupant of its parent.
+   * @param session - live branch Session.
+   * @param parentId - invoking parent Session recorded on the branch mention.
+   * @param author - human invoking from the branch.
+   */
+  private assertBranchOwner(session: Session, parentId: SessionId, author: ResolvedHumanActor): void {
+    const parent = this.occupancyOf(parentId)
+    const owner = parent?.childOwners[session.id]
+    if (owner !== undefined) {
+      if (owner !== author.id) {
+        throw new CollaborationError(
+          `actor "${author.id}" does not own branch "${session.id}"`,
+          'COLLAB_ACCESS_DENIED',
+        )
+      }
+      return
+    }
+    if (parent !== undefined && parent.occupants.includes(author.id)) return
+    throw new CollaborationError(
+      `actor "${author.id}" does not own branch "${session.id}"`,
+      'COLLAB_ACCESS_DENIED',
+    )
   }
 
   /**
@@ -431,6 +528,15 @@ export class CollaborationService extends Service {
   }
 
   /**
+   * List the assistant replies a branch produced itself, excluding replies inherited from its ancestors.
+   * @param session - branch Session.
+   * @returns publishable reply message ids in log order.
+   */
+  branchReplyIds(session: Session): string[] {
+    return ownAssistantReplies(session).map(reply => reply.id)
+  }
+
+  /**
    * Copy one assistant reply from the branch onto the room as that AI's room line.
    * The room Agent is cold-resumed when it is not live. Publishing the same
    * branch reply twice is refused instead of duplicating the room line.
@@ -462,7 +568,13 @@ export class CollaborationService extends Service {
       )
     }
     await this.journal.transact(mention.roomId, async () => {
-      this.assertCanAccess(roomAgent.session, publisher)
+      // The publish target is the invoking parent: a root room checks room
+      // occupancy, while a parent branch checks branch ownership.
+      if (roomAgent.session.header.parentSession === undefined) {
+        this.assertCanAccess(roomAgent.session, publisher)
+      } else {
+        this.assertBranchOwner(child, mention.roomId, publisher)
+      }
       const owner = this.journal.state(roomAgent.session).childOwners[child.id]
       if (owner !== undefined && owner !== publisher.id) {
         throw new CollaborationError(
@@ -475,7 +587,7 @@ export class CollaborationService extends Service {
         && message.assistantSeq === reply.seq)
       if (already) {
         throw new CollaborationError(
-          'this branch reply is already on the room',
+          'this branch reply is already published',
           'COLLAB_ALREADY_PUBLISHED',
         )
       }
@@ -933,7 +1045,14 @@ export class CollaborationService extends Service {
       recipient,
       throughSeq,
       lastThroughSeq,
-      collectRoomConversation(session.snapshotEvents(), throughSeq, lastThroughSeq),
+      // Only the invoking Session's own turns compile: a branch child cannot
+      // see inherited events through `deriveMessages()`, and the room prefix
+      // already reached the branch when the branch itself was invoked.
+      collectRoomConversation(
+        session.snapshotEvents().filter(event => event.seq >= session.inheritedEventCount),
+        throughSeq,
+        lastThroughSeq,
+      ),
       this.maxCompileBytes,
     )
     child.followup(createUserMessage({
@@ -1187,6 +1306,26 @@ function lastMentionSource(session: Session): {
 }
 
 /**
+ * Collect the assistant replies a Session produced on its own (non-inherited) log events.
+ * @param session - branch Session.
+ * @returns each reply's message id, seq, and joined text blocks, in log order.
+ */
+function ownAssistantReplies(session: Session): { id: string; seq: SessionSeq; text: string }[] {
+  const replies: { id: string; seq: SessionSeq; text: string }[] = []
+  for (const event of session.snapshotEvents()) {
+    if (event.type !== 'assistant/message') continue
+    if (event.seq < session.inheritedEventCount) continue
+    const text = event.data.message.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('')
+    if (text.length === 0) continue
+    replies.push({ id: event.data.message.id, seq: event.seq, text })
+  }
+  return replies
+}
+
+/**
  * Find one assistant reply on the branch's own (non-inherited) log events.
  * @param session - branch Session.
  * @param assistantSeq - exact assistant-message seq, or `undefined`.
@@ -1198,22 +1337,10 @@ function assistantReply(
   assistantSeq: SessionSeq | undefined,
   assistantMessageId: string | undefined,
 ): { seq: SessionSeq; text: string } | undefined {
-  let latest: { seq: SessionSeq; text: string } | undefined
-  for (const event of session.snapshotEvents()) {
-    if (event.type !== 'assistant/message') continue
-    if (event.seq < session.inheritedEventCount) continue
-    const text = event.data.message.content
-      .filter(block => block.type === 'text')
-      .map(block => block.text)
-      .join('')
-    if (text.length === 0) continue
-    if (assistantSeq !== undefined && event.seq === assistantSeq) return { seq: event.seq, text }
-    if (assistantMessageId !== undefined && event.data.message.id === assistantMessageId) {
-      return { seq: event.seq, text }
-    }
-    latest = { seq: event.seq, text }
-  }
-  return assistantSeq === undefined && assistantMessageId === undefined ? latest : undefined
+  const replies = ownAssistantReplies(session)
+  if (assistantSeq !== undefined) return replies.find(reply => reply.seq === assistantSeq)
+  if (assistantMessageId !== undefined) return replies.find(reply => reply.id === assistantMessageId)
+  return replies.at(-1)
 }
 
 export default CollaborationService

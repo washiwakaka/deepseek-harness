@@ -130,7 +130,7 @@ describe('collaboration identity posts', () => {
     const sessionId = handle.agent.session.id
     await handle.dispose()
     expect(ctx.sessions.get(sessionId)).toBeUndefined()
-    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' }
     expect(ctx.remoteAccess.decide({
       principal: alicePrincipal,
       action: 'session/list',
@@ -170,7 +170,7 @@ describe('collaboration identity posts', () => {
     await second.identity.registerPassword('alice', 'password1', 'Alice')
     const alice = caller(second, 'peer-alice' as PeerId)
     await alice.identity.loginPassword('alice', 'password1')
-    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' }
     expect(second.remoteAccess.decide({
       principal: alicePrincipal,
       action: 'session/list',
@@ -179,7 +179,7 @@ describe('collaboration identity posts', () => {
     await second.identity.registerPassword('bob', 'password1', 'Bob')
     const bob = caller(second, 'peer-bob' as PeerId)
     await bob.identity.loginPassword('bob', 'password1')
-    const bobPrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-bob' as PeerId }
+    const bobPrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-bob' }
     expect(second.remoteAccess.decide({
       principal: bobPrincipal,
       action: 'session/list',
@@ -201,7 +201,7 @@ describe('collaboration identity posts', () => {
     await handle.dispose()
     const alice = caller(ctx, 'peer-alice' as PeerId)
     await alice.identity.loginPassword('alice', 'password1')
-    const principal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    const principal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' }
     expect(ctx.remoteAccess.decide({
       principal,
       action: 'session/list',
@@ -230,7 +230,7 @@ describe('collaboration identity posts', () => {
     await ctx.identity.registerPassword('alice', 'password1', 'Alice')
     const alice = caller(ctx, 'peer-alice' as PeerId)
     await alice.identity.loginPassword('alice', 'password1')
-    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' as PeerId }
+    const alicePrincipal = { kind: 'local-identity' as const, browserSessionId: 'peer-alice' }
     expect(ctx.remoteAccess.decide({
       principal: alicePrincipal,
       action: 'session/create',
@@ -288,17 +288,59 @@ describe('collaboration identity posts', () => {
       { kind: 'session', id: room.session.id },
     ] as const
     expect(ctx.remoteAccess.decide({
-      principal: { kind: 'local-identity', browserSessionId: 'peer-alice' as PeerId },
+      principal: { kind: 'local-identity', browserSessionId: 'peer-alice' },
       action: 'session/create',
       resources: [...resources],
     }).kind).toBe('allow')
     const bob = caller(ctx, 'peer-bob' as PeerId)
     await bob.identity.loginPassword('bob', 'password1')
     expect(ctx.remoteAccess.decide({
-      principal: { kind: 'local-identity', browserSessionId: 'peer-bob' as PeerId },
+      principal: { kind: 'local-identity', browserSessionId: 'peer-bob' },
       action: 'session/create',
       resources: [...resources],
     }).kind).not.toBe('allow')
+  })
+
+  it('lets the branch owner invoke another model from inside the branch and refuses a fellow occupant', async () => {
+    const ctx = new Context()
+    contexts.push(ctx)
+    new MemoryCredentials(ctx)
+    await mountAgentLoopTestDependencies(ctx)
+    const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-collab-branch-invoke-'))
+    roots.push(storageRoot)
+    await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
+    await ctx.plugin(AgentLoop, { agents: [] })
+    await ctx.plugin(IdentityService, {})
+    await ctx.plugin(CollaborationService, {
+      actors: [
+        { id: 'model-a', kind: 'ai', name: 'A', provider: 'mock', model: 'mock' },
+        { id: 'model-b', kind: 'ai', name: 'B', provider: 'mock', model: 'mock' },
+      ],
+    })
+    ctx.llm.registerAdapter(['mock'], new MockAdapter([]))
+    await ctx.identity.registerPassword('alice', 'password1', 'Alice')
+    await ctx.identity.registerPassword('bob', 'password1', 'Bob')
+    await ctx.identity.loginPassword('alice', 'password1')
+    const room = await ctx.agentLoop.create(SessionId('invoke-room'), { provider: 'mock', model: 'mock' })
+    const posted = await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A look, and welcome @Bob',
+      mentions: [ActorId('model-a'), ActorId('bob')],
+    })
+    const branch = ctx.agents.get(posted.childSessionIds[0]!)
+    expect(branch).toBeDefined()
+    const invoked = await ctx.collaboration.postBranchMessage(branch!.session, {
+      actorId: ActorId('alice'),
+      text: 'cross-check @B',
+      mentions: [ActorId('model-b')],
+    })
+    expect(invoked.childSessionIds).toHaveLength(1)
+    // Bob occupies the room but does not own Alice's branch.
+    await expect(ctx.collaboration.postBranchMessage(branch!.session, {
+      actorId: ActorId('bob'),
+      text: 'me too @B',
+      mentions: [ActorId('model-b')],
+    })).rejects.toMatchObject({ code: 'COLLAB_ACCESS_DENIED' })
   })
 
   it('allows Config humans when identity is not loaded', async () => {

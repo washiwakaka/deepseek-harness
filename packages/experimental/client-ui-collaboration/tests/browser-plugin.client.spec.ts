@@ -70,11 +70,18 @@ async function bench() {
     ok: true,
     value: { childSessionIds: request.mentions !== undefined && request.mentions.length > 0 ? ['child-a'] : [] },
   }))
+  const postBranchMessage = vi.fn(async (_sessionId: SessionId, request: { mentions?: readonly string[] }): Promise<
+    | { ok: true; value: { childSessionIds: string[] } }
+    | { ok: false; error: RemoteError }
+  > => ({
+    ok: true,
+    value: { childSessionIds: request.mentions !== undefined && request.mentions.length > 0 ? ['sub-a'] : [] },
+  }))
   const sendWithRoom = vi.fn(async () => ({ ok: true as const }))
   const publish = vi.fn(async () => ({ ok: true as const }))
-  const branchInfo = vi.fn(async () => ({
+  const branchInfo = vi.fn(async (sessionId: string) => ({
     ok: true as const,
-    value: { roomId: 'sess-1', actorId: 'model-a' },
+    value: sessionId === 'child-a' ? { roomId: 'sess-1', actorId: 'model-a', replyIds: ['msg-1'] } : null,
   }))
   const leaveRoom = vi.fn(async () => ({ ok: true as const }))
   const removeOccupantRemote = vi.fn(async () => ({ ok: true as const }))
@@ -96,6 +103,7 @@ async function bench() {
     listActors,
     listMentionModels,
     postMessage,
+    postBranchMessage,
     sendWithRoom,
     publish,
     branchInfo,
@@ -143,7 +151,7 @@ async function bench() {
   if (dispose === undefined) throw new Error('mount did not return a disposer')
   return {
     ctx, fiber, registered, dispose, unmount, listActors, listMentionModels,
-    postMessage, sendWithRoom, publish, branchInfo, leaveRoom,
+    postMessage, postBranchMessage, sendWithRoom, publish, branchInfo, leaveRoom,
     removeOccupantRemote, openSession, mentionSource: () => mentionSource,
   }
 }
@@ -265,9 +273,26 @@ describe('collaboration-room browser plugin', () => {
     expect(b.postMessage).not.toHaveBeenCalled()
     await expect(send({ ...withChip, attachmentCount: 0 })).resolves.toEqual({ kind: 'success' })
     expect(b.postMessage).toHaveBeenCalledTimes(1)
-    // The post remembered child-a as a branch; a Send there keeps the ordinary path.
-    await expect(send({ ...withChip, sessionId: 'child-a', attachmentCount: 0 })).resolves.toBeUndefined()
+    // The post remembered child-a as a branch; a Send there with a model chip
+    // invokes a sub-branch instead of prompting the branch Agent, while a
+    // Send without one keeps the ordinary path.
+    await expect(send({ ...withChip, sessionId: 'child-a', attachmentCount: 0 })).resolves.toEqual({ kind: 'success' })
     expect(b.postMessage).toHaveBeenCalledTimes(1)
+    expect(b.postBranchMessage).toHaveBeenCalledWith('child-a', {
+      actorId: 'alice',
+      text: '@Qwen-Plus look',
+      mentions: ['qwen-token-plan/qwen-plus'],
+    })
+    await expect(send({
+      sessionId: 'child-a', text: 'plain follow-up', draft: 'plain follow-up',
+      occurrences: [], attachmentCount: 0, mode: 'queue',
+    })).resolves.toBeUndefined()
+    expect(b.postBranchMessage).toHaveBeenCalledTimes(1)
+    b.postBranchMessage.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: new RemoteError('collaboration/failed', 'down', { reason: 'down' }),
+    }))
+    await expect(send({ ...withChip, sessionId: 'child-a', attachmentCount: 0 })).resolves.toEqual({ kind: 'error' })
     b.postMessage.mockImplementationOnce(async () => ({
       ok: false as const,
       error: new RemoteError('collaboration/failed', 'down', { reason: 'down' }),
@@ -306,7 +331,7 @@ describe('collaboration-room browser plugin', () => {
       post: (text: string, mentions?: readonly string[]) => Promise<string | undefined>
       promptWithRoom: (text: string, mentions?: readonly string[]) => Promise<string | undefined>
     }
-    await expect(postInjected.branchInfo('sess-1')).resolves.toBe(true)
+    await expect(postInjected.branchInfo('child-a')).resolves.toBe(true)
     b.postMessage.mockImplementationOnce(async () => ({
       ok: true as const,
       value: { childSessionIds: [], failedActorIds: ['model-a'] },
@@ -323,11 +348,13 @@ describe('collaboration-room browser plugin', () => {
     expect(action).toMatchObject({ options: { id: 'collaboration-publish-reply', order: 20 } })
     const actionInjected = action?.inject?.('sess-1' as SessionId as never) as {
       publishReply: (messageId: string) => Promise<void>
-      branchInfo: (sessionId: string) => Promise<boolean>
+      branchInfo: (sessionId: string, messageId: string) => Promise<{ branch: boolean; ownReply: boolean }>
     }
     await actionInjected.publishReply('msg-7')
     expect(b.publish).toHaveBeenCalledWith('sess-1', 'alice', undefined, 'msg-7')
-    await expect(actionInjected.branchInfo('sess-1')).resolves.toBe(true)
+    await expect(actionInjected.branchInfo('child-a', 'msg-1')).resolves.toEqual({ branch: true, ownReply: true })
+    await expect(actionInjected.branchInfo('child-a', 'msg-other')).resolves.toEqual({ branch: true, ownReply: false })
+    await expect(actionInjected.branchInfo('sess-1', 'msg-1')).resolves.toEqual({ branch: false, ownReply: false })
     await b.dispose()
   })
 

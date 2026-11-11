@@ -9,7 +9,7 @@ English | [中文](2026-11-10-collaboration-room-lifecycle.zh.md)
 
 ## Summary
 
-Adds the collaboration/occupant-removed event and optional publish provenance (branchSessionId, assistantSeq) on collaboration/message, and linearizes the shared message-source roots onto the merged history.
+Adds the collaboration/occupant-removed event and optional publish source fields (branchSessionId, assistantSeq) on collaboration/message, and linearizes the shared message-source roots onto the merged history.
 
 ## Table of Contents
 
@@ -55,7 +55,7 @@ changes:
 <a id="compatibility"></a>
 ## Compatibility
 
-Existing sessions remain valid. collaboration/occupant-removed is a new required-on-read collaboration event: an older harness that does not list it refuses the log instead of skipping it, matching the other collaboration/* events. branchSessionId and assistantSeq are optional; older readers ignore them and older logs have no publish provenance, so duplicate-publish detection simply does not apply to replies published before this change. The shared roots (user/message, developer/message, agent/inbox/spliced, session/title-llm-request) only re-base the earlier collaboration record onto the merged master history: the union variants and optional properties named here were each already acknowledged by the records that introduced them (subagent settlement attribution, retry control input, collaboration room events), and no reader behavior changes. Session header version is unchanged.
+Existing sessions remain valid. collaboration/occupant-removed is a new required-on-read collaboration event: an older harness that does not list it refuses the log instead of skipping it, matching the other collaboration/* events. branchSessionId and assistantSeq are optional; older readers ignore them and older logs carry neither field, so duplicate-publish detection simply does not apply to replies published before this change. The shared roots (user/message, developer/message, agent/inbox/spliced, session/title-llm-request) only re-base the earlier collaboration record onto the merged master history: the union variants and optional properties named here were each already acknowledged by the records that introduced them (subagent settlement attribution, retry control input, collaboration room events), and no reader behavior changes. Session header version is unchanged.
 
 <a id="verification"></a>
 ## Verification

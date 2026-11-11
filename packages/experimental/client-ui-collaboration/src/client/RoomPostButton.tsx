@@ -7,7 +7,7 @@ import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/c
 import type { ActorRosterSnapshot } from './actor-roster.ts'
 import { roomMentionIds } from './mention-source.ts'
 import { isNoHumanPostError } from './post-draft.ts'
-import { isOwnedBranch } from './visibility.ts'
+import { isNestedBranch, isOwnedBranch } from './visibility.ts'
 import { NS } from './locales.ts'
 import css from './RoomPostButton.module.css'
 
@@ -62,6 +62,7 @@ export function RoomPostButton({
   ])
   const remembered = useActors(snapshot => snapshot.branchIds?.includes(sessionId) === true)
   const listed = useSessions(list => isOwnedBranch(selectedHumanId, list, sessionId))
+  const nested = useSessions(list => isNestedBranch(list, sessionId))
   const [queriedBranch, setQueriedBranch] = useState(false)
   useEffect(() => {
     setQueriedBranch(false)
@@ -109,16 +110,16 @@ export function RoomPostButton({
   return (
     <span className={css.wrap}>
       {onBranch ? (
-        <Tooltip label={t('publish.aria')} side="top" delayMs={500} disabled={sending}>
+        <Tooltip label={t(nested ? 'publish.branchAria' : 'publish.aria')} side="top" delayMs={500} disabled={sending}>
           <button
             type="button"
             className={css.button}
-            aria-label={t('publish.aria')}
+            aria-label={t(nested ? 'publish.branchAria' : 'publish.aria')}
             aria-busy={sending}
             disabled={sending}
             onClick={() => { finish(() => publish()) }}
           >
-            <span className={css.label}>{t('publish')}</span>
+            <span className={css.label}>{t(nested ? 'publish.branch' : 'publish')}</span>
           </button>
         </Tooltip>
       ) : (

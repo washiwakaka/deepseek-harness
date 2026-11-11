@@ -135,6 +135,7 @@ const SESSION_WRITE_ACTIONS: readonly RemoteAccessAction[] = [
   'userQuestions/attachWait',
   'fileUploads/upload',
   'collaboration/postMessage',
+  'collaboration/postBranchMessage',
   'collaboration/publish',
   'collaboration/claimRoom',
   'collaboration/sendWithRoom',
@@ -365,7 +366,9 @@ const UNSIGNED_GLOBAL: RemoteAccessRole<'global'> = {
 
 /**
  * Build the overlay session ACL. Unsigned browsers get identity plus an empty
- * Session list. Occupants read and write their rooms and own branches. The
+ * Session list. Occupants read and write their rooms and own branches, and a
+ * branch owner keeps the same write and owner control over sub-branches they
+ * open from inside a branch, at any depth. The
  * first occupant is the creator and receives every session-scoped Host action
  * on that room and their own branches, regardless of role or granted
  * capabilities. Admins read every listed Session and write only rooms they occupy. A Config
@@ -443,6 +446,23 @@ export function createLocalIdentityAccessPolicy(
         if (account.admin) {
           readIds.add(sessionId)
           for (const child of Object.values(room.children)) readIds.add(child)
+        }
+      }
+      // Sub-branches opened from inside a branch hang off the branch's own
+      // occupancy record, not the room's. Expand owned children transitively
+      // so a branch owner keeps the same control over a sub-branch they
+      // opened for cross-checking, at any depth.
+      const expandQueue = [...writeIds]
+      for (let sessionId = expandQueue.pop(); sessionId !== undefined; sessionId = expandQueue.pop()) {
+        const room = facts.occupancy(SessionId(sessionId))
+        if (room === undefined) continue
+        for (const child of ownedChildren(actor, room)) {
+          readIds.add(child)
+          if (!writeIds.has(child)) {
+            writeIds.add(child)
+            expandQueue.push(child)
+          }
+          if (creatorIds.has(sessionId) || room.childOwners[child] === actor) creatorIds.add(child)
         }
       }
       if (account.admin) {

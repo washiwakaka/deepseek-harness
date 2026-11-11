@@ -20,6 +20,13 @@ export interface CollaborationRemote {
     | { ok: true; value?: { childSessionIds?: readonly string[]; failedActorIds?: readonly string[] } }
     | { ok: false; error: Error }
   >
+  postBranchMessage(
+    sessionId: SessionId,
+    request: CollaborationPostRequest,
+  ): Promise<
+    | { ok: true; value?: { childSessionIds?: readonly string[]; failedActorIds?: readonly string[] } }
+    | { ok: false; error: Error }
+  >
   publish(
     sessionId: SessionId,
     actorId: string,
@@ -28,7 +35,7 @@ export interface CollaborationRemote {
   ): Promise<{ ok: true } | { ok: false; error: Error }>
   branchInfo(
     sessionId: SessionId,
-  ): Promise<{ ok: true; value: { roomId: string; actorId: string } | null } | { ok: false; error: Error }>
+  ): Promise<{ ok: true; value: { roomId: string; actorId: string; replyIds: readonly string[] } | null } | { ok: false; error: Error }>
   leaveRoom(
     sessionId: SessionId,
     actorId: string,
@@ -79,6 +86,37 @@ export async function postRoomDraft(
   actorId?: string,
   mentions?: readonly string[],
 ): Promise<{ childSessionIds: readonly string[]; failedActorIds: readonly string[] }> {
+  return await dispatchPost(remote, (id, request) => remote.postMessage(id, request), sessionId, text, actorId, mentions)
+}
+
+/**
+ * Append one line inside a mention branch as its owner.
+ * @param remote - mounted `collaboration` namespace.
+ * @param sessionId - branch Session whose owner is posting.
+ * @param text - non-empty branch body.
+ * @param actorId - branch owner; omitted uses the first human from `listActors`.
+ * @param mentions - optional AI occupant ids to wake in sub-branches.
+ * @returns started sub-branch Session ids and mentioned AI ids whose sub-branch failed to start.
+ * @throws the Remote failure, or `collaboration/invalid-argument` when no human occupant exists.
+ */
+export async function postBranchDraft(
+  remote: CollaborationRemote,
+  sessionId: SessionId,
+  text: string,
+  actorId?: string,
+  mentions?: readonly string[],
+): Promise<{ childSessionIds: readonly string[]; failedActorIds: readonly string[] }> {
+  return await dispatchPost(remote, (id, request) => remote.postBranchMessage(id, request), sessionId, text, actorId, mentions)
+}
+
+async function dispatchPost(
+  remote: CollaborationRemote,
+  call: CollaborationRemote['postMessage'],
+  sessionId: SessionId,
+  text: string,
+  actorId?: string,
+  mentions?: readonly string[],
+): Promise<{ childSessionIds: readonly string[]; failedActorIds: readonly string[] }> {
   let authorId = actorId
   if (authorId === undefined) {
     const actors = await remote.listActors()
@@ -88,7 +126,7 @@ export async function postRoomDraft(
   if (authorId === undefined) {
     throw new RemoteError('collaboration/invalid-argument', 'no human occupant', { reason: 'no human occupant' })
   }
-  const posted = await remote.postMessage(sessionId, {
+  const posted = await call(sessionId, {
     actorId: authorId,
     text,
     ...mentions !== undefined && mentions.length > 0 ? { mentions } : {},
@@ -122,12 +160,12 @@ export async function publishFromChild(
  * Ask the Host whether this Session is a mention branch.
  * @param remote - mounted `collaboration` namespace.
  * @param sessionId - candidate branch Session.
- * @returns the owning room and AI occupant, or `undefined` when it is not a branch or the call failed.
+ * @returns the owning room, AI occupant, and the branch's own reply ids, or `undefined` when it is not a branch or the call failed.
  */
 export async function branchInfoOf(
   remote: CollaborationRemote,
   sessionId: SessionId,
-): Promise<{ roomId: string; actorId: string } | undefined> {
+): Promise<{ roomId: string; actorId: string; replyIds: readonly string[] } | undefined> {
   const info = await remote.branchInfo(sessionId)
   if (!info.ok) return undefined
   return info.value ?? undefined

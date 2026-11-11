@@ -36,7 +36,7 @@ async function setup() {
       { id: 'model-a', kind: 'ai', name: 'A', provider: 'mock', model: 'mock' },
     ],
   })
-  ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('ok')]))
+  ctx.llm.registerAdapter(['mock'], new MockAdapter([textResponse('ok'), textResponse('ok'), textResponse('ok')]))
   const room = await ctx.agentLoop.create(SessionId('room'), { provider: 'mock', model: 'mock' })
   const api = new CollaborationController(ctx)
   return { api, ctx, room }
@@ -128,6 +128,74 @@ describe('collaboration Remote', () => {
     }
   })
 
+  it('invokes a sub-branch from inside a branch and publishes its reply back to the branch', async () => {
+    const { api, ctx, room } = await setup()
+    const posted = await api.postMessage(
+      room,
+      { actorId: 'alice', text: '@A look', mentions: ['model-a'] },
+      new AbortController().signal,
+    )
+    const child = ctx.agents.get(posted.childSessionIds[0] as never)
+    expect(child).toBeDefined()
+    await child!.whenIdle()
+    const invoked = await api.postBranchMessage(
+      child!,
+      { actorId: 'alice', text: 'cross-check @A', mentions: ['model-a'] },
+      new AbortController().signal,
+    )
+    expect(invoked.failedActorIds).toEqual([])
+    const sub = ctx.agents.get(invoked.childSessionIds[0] as never)
+    expect(sub).toBeDefined()
+    await sub!.whenIdle()
+    const subReplyIds = sub!.session.snapshotEvents().flatMap(event =>
+      event.type === 'assistant/message' && event.seq >= sub!.session.inheritedEventCount
+        ? [event.data.message.id]
+        : [])
+    expect(subReplyIds).toHaveLength(1)
+    expect(api.branchInfo(sub!, new AbortController().signal)).toEqual({
+      roomId: posted.childSessionIds[0],
+      actorId: 'model-a',
+      replyIds: subReplyIds,
+    })
+    await api.publish(sub!, 'alice', undefined, undefined, new AbortController().signal)
+    expect(child!.session.snapshotEvents().some(event =>
+      event.type === 'collaboration/message' && event.data.kind === 'ai' && event.data.text === 'ok',
+    )).toBe(true)
+    try {
+      await api.postBranchMessage(room, { actorId: 'alice', text: 'not a branch' }, new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/invalid-argument' })
+    }
+  })
+
+  it('maps branch invoke results and failures onto the wire', async () => {
+    const { api, ctx, room } = await setup()
+    const invoke = vi.spyOn(ctx.collaboration, 'postBranchMessage')
+    invoke.mockResolvedValue({
+      childSessionIds: [SessionId('sub-1')],
+      failedActorIds: [ActorId('model-a')],
+    })
+    await expect(api.postBranchMessage(
+      room,
+      { actorId: 'alice', text: 'check', mentions: ['model-a'] },
+      new AbortController().signal,
+    )).resolves.toEqual({ childSessionIds: ['sub-1'], failedActorIds: ['model-a'] })
+    invoke.mockRejectedValue(new CollaborationError('session is not a branch', 'COLLAB_NOT_BRANCH'))
+    try {
+      await api.postBranchMessage(room, { actorId: 'alice', text: 'check' }, new AbortController().signal)
+      expect.unreachable()
+    } catch (error: unknown) {
+      expect(remoteErrorOf(error)).toMatchObject({ code: 'collaboration/invalid-argument' })
+    }
+    invoke.mockRejectedValue(new Error('boom'))
+    await expect(api.postBranchMessage(
+      room,
+      { actorId: 'alice', text: 'check' },
+      new AbortController().signal,
+    )).rejects.toThrow('boom')
+  })
+
   it('identifies branch Sessions and refuses a duplicate publish', async () => {
     const { api, ctx, room } = await setup()
     const posted = await api.postMessage(
@@ -141,6 +209,7 @@ describe('collaboration Remote', () => {
     expect(api.branchInfo(child!, new AbortController().signal)).toEqual({
       roomId: 'room',
       actorId: 'model-a',
+      replyIds: [expect.any(String)],
     })
     expect(api.branchInfo(room, new AbortController().signal)).toBeNull()
     await api.publish(child!, 'alice', undefined, undefined, new AbortController().signal)

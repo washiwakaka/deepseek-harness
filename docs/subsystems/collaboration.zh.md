@@ -10,19 +10,19 @@
 
 ## 房间与分支
 
-房间是一个根 Session，其日志承载协作事件（`collaboration/room-created`、`collaboration/occupant-joined`、`collaboration/message`、`collaboration/branch-opened`、`collaboration/actor-invoked`、`collaboration/occupant-removed`）。每位占用者——创建人和每位加入的 actor——都在该根的一个子 Session 中工作，用 `openBranch` 打开；分支继承分叉点之前的房间历史，之后各自演进。房间是惰性恢复的：从一个房间未驻活的分支发布时，会先重放房间日志重建活房间再落盘发布，所以冷房间不会拒绝发布。必须跨重启存活的状态都在 Session 日志本身里；服务只保留一份房间到分支归属的 journal 和一份占用缓存，节流清扫会在条目既未持久化又不在线时将其删除。
+房间是一个根 Session，其日志承载协作事件（`collaboration/room-created`、`collaboration/occupant-joined`、`collaboration/message`、`collaboration/branch-opened`、`collaboration/actor-invoked`、`collaboration/occupant-removed`）。每位占用者——创建人和每位加入的 actor——都在该根的一个子 Session 中工作，用 `openBranch` 打开；分支继承分叉点之前的房间历史，之后各自演进。分支属主还能在分支内部再分一层：在那里 @ 另一个模型会把帖子追加到分支日志，并以分支为种子打开一个子分支，因此同一套编译与水位机制会把分支当作发起方父级再跑一遍。房间是惰性恢复的：从一个房间未驻活的分支发布时，会先重放房间日志重建活房间再落盘发布，所以冷房间不会拒绝发布。必须跨重启存活的状态都在 Session 日志本身里；服务只保留一份房间到分支归属的 journal 和一份占用缓存，节流清扫会在条目既未持久化又不在线时将其删除。
 
 <a id="access"></a>
 
 ## 访问
 
-所有协作问题由一份策略决定。[`access-policy.ts`](../../packages/experimental/collaboration/src/access-policy.ts) 中的 `decideCollaborationAccess` 读取房间投影并按 Session 回答：房间创建人和分支所有者对自己的 Session 拥有完整的 Session 动作集，占用者对房间有读和发帖权，种子管理员可以列表并只读查看全部房间、但不能写入自己未占用的房间，与房间没有任何占用关系的调用者被拒绝。同一个判定结果喂给 Gateway 的 `remoteAccess` 策略，因此会话列表、`@` 提及候选和直接 Remote 调用对谁能看到房间不会产生分歧。认领房间只绑定确实带有房间占用关系的根 Session；分支 Session 永远不能被认领为房间。
+所有协作问题由一份策略决定。[`access-policy.ts`](../../packages/experimental/collaboration/src/access-policy.ts) 中的 `decideCollaborationAccess` 读取房间投影并按 Session 回答：房间创建人和分支所有者对自己的 Session 拥有完整的 Session 动作集——属主权会传递到分支内开出的子分支——占用者对房间有读和发帖权，种子管理员可以列表并只读查看全部房间、但不能写入自己未占用的房间，与房间没有任何占用关系的调用者被拒绝。同一个判定结果喂给 Gateway 的 `remoteAccess` 策略，因此会话列表、`@` 提及候选和直接 Remote 调用对谁能看到房间不会产生分歧。认领房间只绑定确实带有房间占用关系的根 Session；分支 Session 永远不能被认领为房间。
 
 <a id="posting-and-publishing"></a>
 
 ## 发帖与发布
 
-带房间提及 chip 的 Composer 发送通过 `ui-conversation` 拥有的 `conversation/before-send` 串行事件走同一条路径，普通回车不会把提及当作普通房间 prompt 丢掉。人类帖子会点名被提及的占用者；服务按每位被提及的 actor 从房间记录编译一份任务（[`compiler.ts`](../../packages/experimental/collaboration/src/compiler.ts)），编译文本超过配置的 `maxCompileBytes` 预算时从最旧的行开始丢弃，并把每份任务投递到该 actor 的分支。投递是逐收件人的：无法接收任务的分支会记入结果的 `failedActorIds`，不会让整帖失败，帖子本身只在房间日志里记录一次。分支里每条助手回复的消息动作条都带有自己的发布动作，按 message id 定位；Composer 的「推到主会话」按钮则发布最新一条。发布把分支里一条完成的助手回复连同其 `branchSessionId` 与 `assistantSeq` 来源追加进房间日志；同一条回复第二次发布会被 `COLLAB_ALREADY_PUBLISHED` 拒绝，而不是重复写入。创建人可以移除其他占用者，任何占用者可以离开；两者都会从下一次访问判定起结束该 actor 的分支访问权。
+带房间提及 chip 的 Composer 发送通过 `ui-conversation` 拥有的 `conversation/before-send` 串行事件走同一条路径，普通回车不会把提及当作普通房间 prompt 丢掉。同样的改道在分支内把模型 chip 发给 `postBranchMessage`：帖子落盘在分支日志，每个被 @ 的模型拿到自其水位以来的分支誊本编译，工作在该分支的子分支里继续。从子分支发布时，回复通过同一套 `publishFromChild` 来源字段与重复拒绝追加到它的父分支，而不是房间。人类帖子会点名被提及的占用者；服务按每位被提及的 actor 从房间记录编译一份任务（[`compiler.ts`](../../packages/experimental/collaboration/src/compiler.ts)），编译文本超过配置的 `maxCompileBytes` 预算时从最旧的行开始丢弃，并把每份任务投递到该 actor 的分支。投递是逐收件人的：无法接收任务的分支会记入结果的 `failedActorIds`，不会让整帖失败，帖子本身只在房间日志里记录一次。分支里每条助手回复的消息动作条都带有自己的发布动作，按 message id 定位；Composer 的「推到主会话」按钮则发布最新一条。发布把分支里一条完成的助手回复连同其 `branchSessionId` 与 `assistantSeq` 来源追加进房间日志；同一条回复第二次发布会被 `COLLAB_ALREADY_PUBLISHED` 拒绝，而不是重复写入。创建人可以移除其他占用者，任何占用者可以离开；两者都会从下一次访问判定起结束该 actor 的分支访问权。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

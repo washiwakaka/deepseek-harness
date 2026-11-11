@@ -28,6 +28,10 @@ export const zh = {
   'publish.aria': '把当前分支的最新回答发到协作房间',
   'publish.reply': '发布这条回答',
   'publish.replyDone': '这条回答已发到房间',
+  'publish.branch': '推到父分支',
+  'publish.branchAria': '把当前分支的最新回答发到父分支',
+  'publish.replyBranch': '发布这条回答到父分支',
+  'publish.replyBranchDone': '这条回答已发到父分支',
   'publish.failed': '发布失败',
 } satisfies Record<string, string>
 
@@ -59,6 +63,10 @@ export const en = {
   'publish.aria': 'Post this branch\'s latest answer to the collaboration room',
   'publish.reply': 'Publish this answer to the room',
   'publish.replyDone': 'This answer is on the room',
+  'publish.branch': 'Push to branch',
+  'publish.branchAria': 'Post this branch\'s latest answer to its parent branch',
+  'publish.replyBranch': 'Publish this answer to the parent branch',
+  'publish.replyBranchDone': 'This answer is on the parent branch',
   'publish.failed': 'Could not publish',
 } satisfies Record<CollaborationRoomKey, string>
 
@@ -87,6 +95,10 @@ export const ja = {
   'publish.aria': 'このブランチの最新の回答をコラボレーションルームに投稿',
   'publish.reply': 'この回答をルームに公開',
   'publish.replyDone': 'この回答はルームに公開済みです',
+  'publish.branch': '親ブランチに送る',
+  'publish.branchAria': 'このブランチの最新の回答を親ブランチに投稿',
+  'publish.replyBranch': 'この回答を親ブランチに公開',
+  'publish.replyBranchDone': 'この回答は親ブランチに公開済みです',
   'publish.failed': '公開できませんでした',
 } satisfies Record<keyof typeof en, string>
 
@@ -115,6 +127,10 @@ export const es = {
   'publish.aria': 'Publicar la última respuesta de esta rama en la sala de colaboración',
   'publish.reply': 'Publicar esta respuesta en la sala',
   'publish.replyDone': 'Esta respuesta ya está en la sala',
+  'publish.branch': 'Enviar a la rama',
+  'publish.branchAria': 'Publicar la última respuesta de esta rama en su rama padre',
+  'publish.replyBranch': 'Publicar esta respuesta en la rama padre',
+  'publish.replyBranchDone': 'Esta respuesta ya está en la rama padre',
   'publish.failed': 'No se pudo publicar',
 } satisfies Record<keyof typeof en, string>
 
@@ -143,6 +159,10 @@ export const fr = {
   'publish.aria': 'Publier la dernière réponse de cette branche dans la salle de collaboration',
   'publish.reply': 'Publier cette réponse dans la salle',
   'publish.replyDone': 'Cette réponse est dans la salle',
+  'publish.branch': 'Envoyer dans la branche',
+  'publish.branchAria': 'Publier la dernière réponse de cette branche dans sa branche parente',
+  'publish.replyBranch': 'Publier cette réponse dans la branche parente',
+  'publish.replyBranchDone': 'Cette réponse est dans la branche parente',
   'publish.failed': 'Publication impossible',
 } satisfies Record<keyof typeof en, string>
 
@@ -171,6 +191,10 @@ export const de = {
   'publish.aria': 'Die neueste Antwort dieses Zweigs im Kollaborationsraum posten',
   'publish.reply': 'Diese Antwort im Raum veröffentlichen',
   'publish.replyDone': 'Diese Antwort ist im Raum',
+  'publish.branch': 'In den Zweig senden',
+  'publish.branchAria': 'Die neueste Antwort dieses Zweigs in seinen Elternzweig posten',
+  'publish.replyBranch': 'Diese Antwort im Elternzweig veröffentlichen',
+  'publish.replyBranchDone': 'Diese Antwort ist im Elternzweig',
   'publish.failed': 'Veröffentlichen fehlgeschlagen',
 } satisfies Record<keyof typeof en, string>
 
@@ -199,6 +223,10 @@ export const ru = {
   'publish.aria': 'Отправить последний ответ этой ветки в комнату совместной работы',
   'publish.reply': 'Опубликовать этот ответ в комнате',
   'publish.replyDone': 'Этот ответ уже в комнате',
+  'publish.branch': 'В ветку',
+  'publish.branchAria': 'Отправить последний ответ этой ветки в её родительскую ветку',
+  'publish.replyBranch': 'Опубликовать этот ответ в родительской ветке',
+  'publish.replyBranchDone': 'Этот ответ уже в родительской ветке',
   'publish.failed': 'Не удалось опубликовать',
 } satisfies Record<keyof typeof en, string>
 
@@ -227,5 +255,9 @@ export const pt = {
   'publish.aria': 'Publicar a última resposta deste ramo na sala de colaboração',
   'publish.reply': 'Publicar esta resposta na sala',
   'publish.replyDone': 'Esta resposta está na sala',
+  'publish.branch': 'Enviar para o ramo',
+  'publish.branchAria': 'Publicar a última resposta deste ramo no seu ramo pai',
+  'publish.replyBranch': 'Publicar esta resposta no ramo pai',
+  'publish.replyBranchDone': 'Esta resposta está no ramo pai',
   'publish.failed': 'Não foi possível publicar',
 } satisfies Record<keyof typeof en, string>

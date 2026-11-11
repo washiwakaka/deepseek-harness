@@ -52,6 +52,10 @@ const t = ((key: string, vars?: Record<string, string>) => {
   if (key === 'occupants.remove') return `Remove ${vars?.name ?? ''} from the room`
   if (key === 'publish.reply') return 'Publish this answer to the room'
   if (key === 'publish.replyDone') return 'This answer is on the room'
+  if (key === 'publish.branch') return 'Push to branch'
+  if (key === 'publish.branchAria') return "Post this branch's latest answer to its parent branch"
+  if (key === 'publish.replyBranch') return 'Publish this answer to the parent branch'
+  if (key === 'publish.replyBranchDone') return 'This answer is on the parent branch'
   if (key === 'publish.failed') return 'Could not publish'
   return key
 }) as never
@@ -192,7 +196,7 @@ function renderPublishAction(publishReply: (messageId: string) => Promise<void>)
     messageId="msg-7"
     sessionId={SessionId('child-1')}
     publishReply={publishReply}
-    branchInfo={vi.fn(async () => false)}
+    branchInfo={vi.fn(async () => ({ branch: true, ownReply: true }))}
     useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: ['child-1'] })}
     useSessions={selectList()}
   /> as never)
@@ -621,6 +625,74 @@ describe('collaboration-room views', () => {
     expect(post).not.toHaveBeenCalled()
   })
 
+  it('labels publish on a sub-branch as pushing to its parent branch', async () => {
+    const publish = vi.fn(async () => {})
+    const publishReply = vi.fn(async () => {})
+    const list = {
+      ids: [SessionId('room'), SessionId('child-1'), SessionId('sub-1')],
+      byId: {},
+      phase: 'ready',
+      projectionsBySession: {
+        [SessionId('room')]: {
+          state: 'ready',
+          error: null,
+          values: {
+            collaboration: {
+              occupants: ['alice'],
+              children: { a: SessionId('child-1') },
+              childOwners: { [SessionId('child-1')]: 'alice' },
+              messages: [],
+              watermarks: {},
+            },
+          },
+        },
+        [SessionId('child-1')]: {
+          state: 'ready',
+          error: null,
+          values: {
+            collaboration: {
+              occupants: ['alice'],
+              children: { b: SessionId('sub-1') },
+              childOwners: { [SessionId('sub-1')]: 'alice' },
+              messages: [],
+              watermarks: {},
+            },
+          },
+        },
+      },
+    } as never
+    render(<PostButton
+      t={t}
+      useInput={(select: (state: InputState) => InputState) => select(inputState({ draft: 'hello', phase: 'plain' }))}
+      inputActions={{ setDraft: vi.fn() } as never}
+      sessionId={SessionId('sub-1')}
+      post={vi.fn(async () => {})}
+      promptWithRoom={vi.fn(async () => {})}
+      publish={publish}
+      branchInfo={vi.fn(async () => false)}
+      thinking={vi.fn()}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: ['sub-1'] })}
+      useSessions={selectList(list)}
+    /> as never)
+    fireEvent.click(screen.getByRole('button', { name: "Post this branch's latest answer to its parent branch" }))
+    await vi.waitFor(() => { expect(publish).toHaveBeenCalled() })
+    cleanup()
+    render(<PublishAction
+      t={t}
+      messageId="msg-9"
+      sessionId={SessionId('sub-1')}
+      publishReply={publishReply}
+      branchInfo={vi.fn(async () => ({ branch: true, ownReply: true }))}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: ['sub-1'] })}
+      useSessions={selectList(list)}
+    /> as never)
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the parent branch' }))
+    await vi.waitFor(() => { expect(publishReply).toHaveBeenCalledWith('msg-9') })
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: 'This answer is on the parent branch' })).toHaveProperty('disabled', true)
+    })
+  })
+
   it('publishes one chosen reply from a branch message action', async () => {
     const publishReply = vi.fn(async () => {})
     render(<PublishAction
@@ -628,11 +700,11 @@ describe('collaboration-room views', () => {
       messageId="msg-7"
       sessionId={SessionId('child-1')}
       publishReply={publishReply}
-      branchInfo={vi.fn(async () => false)}
+      branchInfo={vi.fn(async () => ({ branch: true, ownReply: true }))}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: ['child-1'] })}
       useSessions={selectList()}
     /> as never)
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this answer to the room' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the room' }))
     await vi.waitFor(() => { expect(publishReply).toHaveBeenCalledWith('msg-7') })
     await vi.waitFor(() => {
       expect(screen.getByRole('button', { name: 'This answer is on the room' })).toHaveProperty('disabled', true)
@@ -646,17 +718,17 @@ describe('collaboration-room views', () => {
       .mockRejectedValueOnce(new RemoteError('collaboration/failed', 'flush failed', { reason: 'flush failed' }))
       .mockRejectedValueOnce(new Error('boom'))
     const first = renderPublishAction(publishReply)
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this answer to the room' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the room' }))
     await vi.waitFor(() => {
       expect(screen.getByRole('button', { name: 'This answer is on the room' })).toHaveProperty('disabled', true)
     })
     first.unmount()
     const second = renderPublishAction(publishReply)
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this answer to the room' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the room' }))
     await vi.waitFor(() => { expect(screen.getByRole('status').textContent).toBe('flush failed') })
     second.unmount()
     renderPublishAction(publishReply)
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this answer to the room' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the room' }))
     await vi.waitFor(() => { expect(screen.getByRole('status').textContent).toBe('Could not publish') })
   })
 
@@ -666,7 +738,7 @@ describe('collaboration-room views', () => {
       messageId="msg-7"
       sessionId={SessionId('child-9')}
       publishReply={vi.fn(async () => {})}
-      branchInfo={vi.fn(async () => true)}
+      branchInfo={vi.fn(async () => ({ branch: true, ownReply: true }))}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: [] })}
       useSessions={selectList()}
     /> as never)
@@ -681,16 +753,32 @@ describe('collaboration-room views', () => {
       settle = { resolve, reject }
     }))
     const first = renderPublishAction(publishReply)
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this answer to the room' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the room' }))
     first.unmount()
     settle.resolve?.()
     await Promise.resolve()
     const second = renderPublishAction(publishReply)
-    fireEvent.click(screen.getByRole('button', { name: 'Publish this answer to the room' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish this answer to the room' }))
     second.unmount()
     settle.reject?.(new Error('late'))
     await Promise.resolve()
     expect(publishReply).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the per-reply publish action off replies inherited from an ancestor', async () => {
+    render(<PublishAction
+      t={t}
+      messageId="msg-inherited"
+      sessionId={SessionId('sub-1')}
+      publishReply={vi.fn(async () => {})}
+      branchInfo={vi.fn(async () => ({ branch: true, ownReply: false }))}
+      useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: ['sub-1'] })}
+      useSessions={selectList()}
+    /> as never)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(screen.queryByRole('button', { name: 'Publish this answer to the parent branch' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Publish this answer to the room' })).toBeNull()
   })
 
   it('keeps the per-reply publish action off rooms and survives a failed branch query', async () => {
@@ -713,7 +801,7 @@ describe('collaboration-room views', () => {
       messageId="msg-7"
       sessionId={SessionId('room')}
       publishReply={vi.fn(async () => {})}
-      branchInfo={vi.fn(async () => false)}
+      branchInfo={vi.fn(async () => ({ branch: false, ownReply: false }))}
       useActors={selectRoster({ actors: humans, selectedHumanId: 'alice', branchIds: [] })}
       useSessions={selectList()}
     /> as never)

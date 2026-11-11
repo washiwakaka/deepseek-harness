@@ -7,6 +7,7 @@ import {
   firstHumanId,
   isNoHumanPostError,
   leaveRoom,
+  postBranchDraft,
   postRoomDraft,
   publishFromChild,
   removeOccupant,
@@ -27,6 +28,7 @@ function remote(overrides: Partial<CollaborationRemote> = {}): CollaborationRemo
     })),
     listMentionModels: vi.fn(async () => ({ ok: true as const, value: [] })),
     postMessage: vi.fn(async () => ({ ok: true as const, value: { childSessionIds: [] } })),
+    postBranchMessage: vi.fn(async () => ({ ok: true as const, value: { childSessionIds: [] } })),
     publish: vi.fn(async () => ({ ok: true as const })),
     branchInfo: vi.fn(async () => ({ ok: true as const, value: null })),
     leaveRoom: vi.fn(async () => ({ ok: true as const })),
@@ -93,6 +95,28 @@ describe('postRoomDraft', () => {
     expect(api.postMessage).not.toHaveBeenCalled()
   })
 
+  it('posts inside a branch through the branch endpoint', async () => {
+    const api = remote()
+    await postBranchDraft(api, sessionId, 'cross-check', 'alice', ['model-a'])
+    expect(api.postBranchMessage).toHaveBeenCalledWith(sessionId, {
+      actorId: 'alice',
+      text: 'cross-check',
+      mentions: ['model-a'],
+    })
+    expect(api.postMessage).not.toHaveBeenCalled()
+  })
+
+  it('returns started and failed sub-branches from a branch post', async () => {
+    const api = remote({
+      postBranchMessage: vi.fn(async () => ({
+        ok: true as const,
+        value: { childSessionIds: ['sub-1'], failedActorIds: ['model-b'] },
+      })),
+    })
+    await expect(postBranchDraft(api, sessionId, 'check', 'alice', ['model-a']))
+      .resolves.toEqual({ childSessionIds: ['sub-1'], failedActorIds: ['model-b'] })
+  })
+
   it('admits room context on the current Session', async () => {
     const api = remote()
     await admitRoomContext(api, sessionId, 'alice')
@@ -127,14 +151,14 @@ describe('postRoomDraft', () => {
     const api = remote({
       branchInfo: vi.fn(async () => ({
         ok: true as const,
-        value: { roomId: 'room-1', actorId: 'model-a' },
+        value: { roomId: 'room-1', actorId: 'model-a', replyIds: ['msg-7'] },
       })),
     })
     await publishFromChild(api, sessionId, 'alice', { assistantSeq: 42 })
     expect(api.publish).toHaveBeenCalledWith(sessionId, 'alice', 42, undefined)
     await publishFromChild(api, sessionId, 'alice', { assistantMessageId: 'msg-7' })
     expect(api.publish).toHaveBeenCalledWith(sessionId, 'alice', undefined, 'msg-7')
-    await expect(branchInfoOf(api, sessionId)).resolves.toEqual({ roomId: 'room-1', actorId: 'model-a' })
+    await expect(branchInfoOf(api, sessionId)).resolves.toEqual({ roomId: 'room-1', actorId: 'model-a', replyIds: ['msg-7'] })
     const notBranch = remote()
     await expect(branchInfoOf(notBranch, sessionId)).resolves.toBeUndefined()
     const refused = remote({

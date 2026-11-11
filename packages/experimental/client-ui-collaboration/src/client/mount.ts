@@ -22,7 +22,7 @@ import { RoomThinkingView, type RoomThinkingInjected } from './RoomThinkingView.
 import { collaborationMessageDefinition } from './message-definition.ts'
 import { collaborationThinkingDefinition } from './thinking-definition.ts'
 import { collaborationMentionSource, roomMentionIds } from './mention-source.ts'
-import { branchInfoOf, leaveRoom, postRoomDraft, publishFromChild, removeOccupant, sendWithRoom } from './post-draft.ts'
+import { branchInfoOf, leaveRoom, postBranchDraft, postRoomDraft, publishFromChild, removeOccupant, sendWithRoom } from './post-draft.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type CollaborationRoomKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -60,15 +60,16 @@ function registerCollaborationUi(ctx: ClientContext): void {
   )
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'client-ui-collaboration: dictionaries')
   const actors = new ActorRosterStore()
-  // An ordinary composer Send carrying room mention chips is a room post:
-  // route it to collaboration/postMessage instead of the room Agent prompt,
-  // so @-mentioned models and humans are never silently dropped.
+  // An ordinary composer Send carrying mention chips never reaches the
+  // Session Agent as a prompt: in a room it is a room post routed to
+  // collaboration/postMessage, and inside a mention branch its model chips
+  // invoke sub-branches via collaboration/postBranchMessage, so @-mentioned
+  // models and humans are never silently dropped.
   ctx.effect(() => ctx.on('conversation/before-send', async (request) => {
     if (request.attachmentCount > 0) return undefined
     const snapshot = actors.getSnapshot()
     const humanId = snapshot.selectedHumanId
     if (humanId === undefined) return undefined
-    if (snapshot.branchIds.includes(request.sessionId)) return undefined
     const mentions = roomMentionIds(request.occurrences, [
       ...snapshot.actors.filter(actor => actor.kind === 'human' && actor.id !== humanId).map(actor => actor.id),
       ...snapshot.mentionModels.map(model => model.id),
@@ -76,6 +77,29 @@ function registerCollaborationUi(ctx: ClientContext): void {
     if (mentions.length === 0) return undefined
     const text = request.draft.trim()
     if (text === '') return undefined
+    const modelMentions = mentions.filter(id => snapshot.mentionModels.some(model => model.id === id))
+    // Inside a mention branch, a Send carrying model chips invokes those
+    // models in sub-branches of the branch instead of prompting the branch
+    // Agent, so the owner can cross-check models where the work happens.
+    const onBranch = snapshot.branchIds.includes(request.sessionId)
+      || (await branchInfoOf(ctx.remote.collaboration, request.sessionId as SessionId)) !== undefined
+    if (onBranch) {
+      if (modelMentions.length === 0) return undefined
+      try {
+        const posted = await postBranchDraft(
+          ctx.remote.collaboration,
+          request.sessionId as SessionId,
+          text,
+          humanId,
+          modelMentions,
+        )
+        rememberMentionedBranches(actors, posted.childSessionIds)
+        return { kind: 'success' as const }
+      } catch (postError) {
+        void postError
+        return { kind: 'error' as const }
+      }
+    }
     try {
       const posted = await postRoomDraft(
         ctx.remote.collaboration,
@@ -303,9 +327,10 @@ function registerCollaborationUi(ctx: ClientContext): void {
           if (humanId === undefined) return
           await publishFromChild(ctx.remote.collaboration, sessionId, humanId, { assistantMessageId: messageId })
         },
-        branchInfo: async (targetSessionId) => {
+        branchInfo: async (targetSessionId, targetMessageId) => {
           const info = await branchInfoOf(ctx.remote.collaboration, targetSessionId as SessionId)
-          return info !== undefined
+          if (info === undefined) return { branch: false, ownReply: false }
+          return { branch: true, ownReply: info.replyIds.includes(targetMessageId) }
         },
         hooks: { actors, sessions: ctx.sessions.list },
       }),

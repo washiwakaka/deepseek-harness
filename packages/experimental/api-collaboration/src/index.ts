@@ -132,6 +132,38 @@ export default class CollaborationController extends TypertRemoteService {
   }
 
   /**
+   * Append one line inside a mention branch. Structured AI mentions start
+   * sub-branches of this branch for the branch owner.
+   * @param agent - live branch Agent whose Session carries the line.
+   * @param request - author id, text, and optional AI mention ids.
+   * @param signal - Client cancellation.
+   * @returns started sub-branch Session ids after the branch line is flushed.
+   */
+  @Remote
+  async postBranchMessage(
+    agent: Agent,
+    request: CollaborationPostRequest,
+    signal: AbortSignal,
+  ): Promise<CollaborationPostResult> {
+    signal.throwIfAborted()
+    try {
+      const posted = await this.ctx.collaboration.postBranchMessage(agent.session, {
+        actorId: ActorId(request.actorId),
+        text: request.text,
+        ...request.mentions === undefined ? {} : { mentions: request.mentions.map(id => ActorId(id)) },
+      })
+      return {
+        childSessionIds: posted.childSessionIds.map(id => String(id)),
+        failedActorIds: posted.failedActorIds.map(id => String(id)),
+      }
+    } catch (error: unknown) {
+      signal.throwIfAborted()
+      if (error instanceof CollaborationError) throw toRemoteError(error, request.actorId)
+      throw error
+    }
+  }
+
+  /**
    * Copy one assistant reply from this branch onto its room as that AI's room line.
    * @param agent - live branch Agent started by a mention.
    * @param actorId - human occupant publishing from the branch.
@@ -173,7 +205,11 @@ export default class CollaborationController extends TypertRemoteService {
     signal.throwIfAborted()
     const branch = this.ctx.collaboration.branchOf(agent.session)
     if (branch === undefined) return null
-    return { roomId: String(branch.roomId), actorId: String(branch.actorId) }
+    return {
+      roomId: String(branch.roomId),
+      actorId: String(branch.actorId),
+      replyIds: this.ctx.collaboration.branchReplyIds(agent.session),
+    }
   }
 
   /**

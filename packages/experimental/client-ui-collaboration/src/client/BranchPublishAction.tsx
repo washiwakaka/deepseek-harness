@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ActorRosterSnapshot } from './actor-roster.ts'
-import { isOwnedBranch } from './visibility.ts'
+import { isNestedBranch, isOwnedBranch } from './visibility.ts'
 import { NS } from './locales.ts'
 import css from './BranchPublishAction.module.css'
 
@@ -13,7 +13,7 @@ import css from './BranchPublishAction.module.css'
 export interface BranchPublishInjected {
   sessionId: string
   publishReply: (messageId: string) => Promise<void>
-  branchInfo: (sessionId: string) => Promise<boolean>
+  branchInfo: (sessionId: string, messageId: string) => Promise<{ branch: boolean; ownReply: boolean }>
   hooks: {
     actors: HostObservable<ActorRosterSnapshot>
     sessions: HostObservable<SessionListState>
@@ -28,7 +28,8 @@ export type BranchPublishActionProps =
 
 /**
  * Publish this one assistant reply onto the room, from the branch that produced it.
- * Renders nothing outside a mention branch the selected human owns.
+ * Renders nothing outside a mention branch the selected human owns, and nothing
+ * under replies inherited from the room or an ancestor branch.
  * @param props - owner message identity, injected publish verbs, roster and Session hooks, locale binder.
  * @returns the publish button with its failure notice, or nothing off a branch.
  */
@@ -38,16 +39,16 @@ export function BranchPublishAction({
   const selectedHumanId = useActors(snapshot => snapshot.selectedHumanId)
   const remembered = useActors(snapshot => snapshot.branchIds?.includes(sessionId) === true)
   const listed = useSessions(list => isOwnedBranch(selectedHumanId, list, sessionId))
-  const [queriedBranch, setQueriedBranch] = useState(false)
+  const nested = useSessions(list => isNestedBranch(list, sessionId))
+  const [queried, setQueried] = useState<{ branch: boolean; ownReply: boolean } | null>(null)
   useEffect(() => {
-    setQueriedBranch(false)
-    if (remembered || listed) return
+    setQueried(null)
     let cancelled = false
-    void branchInfo(sessionId).then((isBranch) => {
-      if (!cancelled && isBranch) setQueriedBranch(true)
+    void branchInfo(sessionId, String(messageId)).then((info) => {
+      if (!cancelled) setQueried(info)
     }, () => {})
     return () => { cancelled = true }
-  }, [branchInfo, listed, remembered, sessionId])
+  }, [branchInfo, messageId, sessionId])
   const [state, setState] = useState<'idle' | 'publishing' | 'published' | 'failed'>('idle')
   const [failure, setFailure] = useState<string | null>(null)
   const alive = useRef(true)
@@ -55,8 +56,11 @@ export function BranchPublishAction({
     alive.current = true
     return () => { alive.current = false }
   }, [])
-  if (selectedHumanId === undefined || !(remembered || listed || queriedBranch)) return null
-  const label = state === 'published' ? t('publish.replyDone') : t('publish.reply')
+  if (selectedHumanId === undefined || queried?.ownReply !== true) return null
+  if (!(remembered || listed || queried.branch)) return null
+  const label = state === 'published'
+    ? t(nested ? 'publish.replyBranchDone' : 'publish.replyDone')
+    : t(nested ? 'publish.replyBranch' : 'publish.reply')
   const publish = (): void => {
     setState('publishing')
     setFailure(null)

@@ -16,7 +16,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'collaboration/failed': { readonly reason: string }
     /** Identity is loaded and nobody is signed in. */
     'collaboration/unauthorized': { readonly reason: string }
-    /** The branch reply selected for publishing is already on the room. */
+    /** The branch reply selected for publishing is already on its room or parent branch. */
     'collaboration/already-published': { readonly reason: string }
     /** The branch or its room could not be resumed from persistence. */
     'collaboration/child-missing': { readonly reason: string }
@@ -50,4 +50,6 @@ export interface CollaborationPostResult {
 export interface CollaborationBranchInfo {
   readonly roomId: string
   readonly actorId: string
+  /** Assistant reply message ids this branch produced itself; inherited replies are excluded. */
+  readonly replyIds: readonly string[]
 }

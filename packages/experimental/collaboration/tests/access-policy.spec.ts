@@ -42,7 +42,7 @@ function allows(
   policy: ReturnType<typeof createLocalIdentityAccessPolicy>,
   principal: typeof ALICE,
   action: 'session/list' | 'session/follow' | 'session/prompt' | 'session/create'
-    | 'collaboration/claimRoom' | 'collaboration/postMessage',
+    | 'collaboration/claimRoom' | 'collaboration/postMessage' | 'collaboration/postBranchMessage',
   resource: { readonly kind: 'session'; readonly id: SessionId }
     | { readonly kind: 'global' }
     | { readonly kind: 'workspace'; readonly id: string },
@@ -162,6 +162,37 @@ describe('local-identity session access policy', () => {
     // A read-only admin may not name someone else's Session for creation.
     expect(allows(policy, ADMIN, 'session/create', { kind: 'session', id: ROOM })).toBe(false)
     expect(allows(policy, UNSIGNED, 'session/create', { kind: 'session', id: ROOM })).toBe(false)
+  })
+
+  it('extends branch ownership to sub-branches opened inside a branch', () => {
+    const branch = SessionId('branch-nested')
+    const subBranch = SessionId('sub-branch-nested')
+    const nestedPolicy = createLocalIdentityAccessPolicy({
+      ...facts,
+      listedSessions: () => [ROOM, branch, subBranch],
+      occupancy: occupancy({
+        [ROOM]: {
+          occupants: ['alice', 'bob'],
+          children: { 'alice:model-a': branch },
+          childOwners: { [branch]: 'alice' },
+        },
+        [branch]: {
+          occupants: ['alice'],
+          children: { 'alice:model-b': subBranch },
+          childOwners: { [subBranch]: 'alice' },
+        },
+        [subBranch]: { occupants: [], children: {}, childOwners: {} },
+      }),
+    })
+    expect(allows(nestedPolicy, ALICE, 'session/prompt', { kind: 'session', id: subBranch })).toBe(true)
+    expect(allows(nestedPolicy, ALICE, 'collaboration/postBranchMessage', { kind: 'session', id: branch })).toBe(true)
+    expect(allows(nestedPolicy, ALICE, 'collaboration/postBranchMessage', { kind: 'session', id: subBranch })).toBe(true)
+    // A fellow room occupant does not inherit someone else's branch tree.
+    expect(allows(nestedPolicy, BOB, 'session/follow', { kind: 'session', id: subBranch })).toBe(false)
+    expect(allows(nestedPolicy, BOB, 'collaboration/postBranchMessage', { kind: 'session', id: branch })).toBe(false)
+    // Admins read sub-branches but never write them.
+    expect(allows(nestedPolicy, ADMIN, 'session/follow', { kind: 'session', id: subBranch })).toBe(true)
+    expect(allows(nestedPolicy, ADMIN, 'session/prompt', { kind: 'session', id: subBranch })).toBe(false)
   })
 
   it('does not offer a claim for a non-root Session such as a subagent child', () => {

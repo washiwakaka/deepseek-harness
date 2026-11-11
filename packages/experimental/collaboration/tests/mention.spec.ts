@@ -6,7 +6,8 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import CollaborationService, {
@@ -523,5 +524,214 @@ describe('collaboration mentions', () => {
       mentions: [ActorId('model-a')],
     })).resolves.toMatchObject({ childSessionIds: [expect.any(String)] })
     expect(attachSession).toHaveBeenCalled()
+  })
+})
+
+describe('collaboration branch invokes', () => {
+  async function setupBranch(script: ConstructorParameters<typeof MockAdapter>[0]) {
+    const { ctx, room } = await setup(script)
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: 'hello',
+    })
+    const posted = await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A please look',
+      mentions: [ActorId('model-a')],
+    })
+    const branch = ctx.agents.get(posted.childSessionIds[0]!)
+    expect(branch).toBeDefined()
+    await branch!.whenIdle()
+    return { ctx, room, branch: branch! }
+  }
+
+  it('forks a sub-branch from inside a branch, deltas the next invoke, and publishes back to the branch', async () => {
+    const { ctx, room, branch } = await setupBranch([
+      textResponse('A first'),
+      textResponse('B verdict'),
+      textResponse('B second'),
+    ])
+    const invoked = await ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'cross-check this @B',
+      mentions: [ActorId('model-b')],
+    })
+    expect(invoked.failedActorIds).toEqual([])
+    const subId = invoked.childSessionIds[0]!
+    const sub = ctx.agents.get(subId)
+    expect(sub).toBeDefined()
+    await sub!.whenIdle()
+    expect(ctx.collaboration.branchOf(sub!.session)).toEqual({
+      roomId: branch.session.id,
+      actorId: ActorId('model-b'),
+    })
+    // Only the sub-branch's own reply is publishable from it; the parent
+    // branch's reply is inherited and stays off the list.
+    const ownReplyIds = (session: typeof branch.session) => session.snapshotEvents().flatMap(event =>
+      event.type === 'assistant/message' && event.seq >= session.inheritedEventCount
+        ? [event.data.message.id]
+        : [])
+    const verdictId = sub!.session.snapshotEvents().flatMap(event =>
+      event.type === 'assistant/message'
+      && event.data.message.content.some(block => block.type === 'text' && block.text === 'B verdict')
+        ? [event.data.message.id]
+        : [])[0]
+    expect(ctx.collaboration.branchReplyIds(sub!.session)).toEqual([verdictId])
+    expect(ctx.collaboration.branchReplyIds(sub!.session))
+      .not.toContain(ownReplyIds(branch.session)[0])
+    expect(ctx.collaboration.branchReplyIds(branch.session)).toEqual(ownReplyIds(branch.session))
+
+    const firstTask = sub!.session.deriveMessages().find(message =>
+      message.role === 'user'
+      && message.content.some(block => block.type === 'text' && block.text.startsWith('You are B')))
+    expect(firstTask?.content).toEqual([{
+      type: 'text',
+      text: `${COLLABORATION_MENTION_INSTRUCTION.replace('{name}', 'B')}\n\n[Alice] hello\n[Alice] @A please look\n[Assistant] A first\n[Alice] cross-check this @B`,
+    }])
+
+    // The reply stays on the sub-branch until its owner publishes it to the
+    // branch; the room never sees it.
+    await ctx.collaboration.publishFromChild(sub!.session, ActorId('alice'))
+    const branchState = project(branch.session)
+    expect(branchState.messages.map(message => message.text)).toContain('B verdict')
+    expect(project(room.session).messages.map(message => message.text)).not.toContain('B verdict')
+    await expect(ctx.collaboration.publishFromChild(sub!.session, ActorId('alice')))
+      .rejects.toMatchObject({ code: 'COLLAB_ALREADY_PUBLISHED' })
+
+    const again = await ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'once more @B',
+      mentions: [ActorId('model-b')],
+    })
+    expect(again.childSessionIds).toEqual([subId])
+    await sub!.whenIdle()
+    const tasks = sub!.session.deriveMessages()
+      .filter(message => message.role === 'user')
+      .map(message => message.content.map(block => block.type === 'text' ? block.text : '').join(''))
+      .filter(text => text.startsWith('You are B'))
+    expect(tasks).toHaveLength(2)
+    expect(tasks[1]).toContain('[Alice] once more @B')
+    expect(tasks[1]).not.toContain('hello')
+    expect(tasks[1]).not.toContain('A first')
+  })
+
+  it('reports a sub-branch that cannot resume as failed instead of failing the branch post', async () => {
+    const { ctx, branch } = await setupBranch([
+      textResponse('A first'),
+      textResponse('B verdict'),
+    ])
+    await ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'check @B',
+      mentions: [ActorId('model-b')],
+    })
+    vi.spyOn(ctx.agents, 'get').mockReturnValue(undefined)
+    vi.spyOn(ctx.agents, 'resume').mockRejectedValue(new Error('missing log'))
+    const again = await ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'again @B',
+      mentions: [ActorId('model-b')],
+    })
+    expect(again.childSessionIds).toEqual([])
+    expect(again.failedActorIds).toEqual([ActorId('model-b')])
+  })
+
+  it('refuses branch invokes from non-owners, human mentions, and non-branch Sessions', async () => {
+    const { ctx, room, branch } = await setupBranch([textResponse('A first')])
+    await expect(ctx.collaboration.postBranchMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: 'not a branch',
+      mentions: [ActorId('model-b')],
+    })).rejects.toMatchObject({ code: 'COLLAB_NOT_BRANCH' })
+    await expect(ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('bob'),
+      text: 'not my branch',
+      mentions: [ActorId('model-b')],
+    })).rejects.toMatchObject({ code: 'COLLAB_ACCESS_DENIED' })
+    await expect(ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'hi @Bob',
+      mentions: [ActorId('bob')],
+    })).rejects.toMatchObject({ code: 'COLLAB_INVALID_ARGUMENT' })
+
+    const plain = await ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'note for the branch',
+    })
+    expect(plain).toEqual({ childSessionIds: [], failedActorIds: [] })
+    expect(project(branch.session).messages.map(message => message.text)).toContain('note for the branch')
+  })
+
+  it('admits any parent occupant from a legacy branch without a recorded owner', async () => {
+    const { ctx, room } = await setup([
+      textResponse('legacy reply'),
+      textResponse('B reply'),
+    ])
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: 'hello',
+    })
+    // A legacy branch: a seeded fork carrying a mention source, but no
+    // branch-opened event recording its owner on the room.
+    const events = room.session.snapshotEvents()
+    const boundary = events.at(-1)!.seq
+    const legacy = await ctx.agents.create({
+      sessionId: SessionId('legacy-branch'),
+      seed: buildForkSeed(events, boundary),
+      inheritedEventCount: SessionLogOffset(boundary + 1),
+      meta: { isSeeded: true, parentSession: room.session.id },
+      agentOptions: { provider: 'mock', model: 'mock' },
+    })
+    legacy.agent.followup(createUserMessage({
+      content: [{ type: 'text', text: 'legacy task' }],
+      source: {
+        kind: 'collaboration-mention',
+        roomId: room.session.id,
+        actorId: ActorId('model-a'),
+        throughSeq: boundary,
+      },
+    }))
+    await legacy.agent.whenIdle()
+    const invoked = await ctx.collaboration.postBranchMessage(legacy.agent.session, {
+      actorId: ActorId('alice'),
+      text: 'cross-check @B',
+      mentions: [ActorId('model-b')],
+    })
+    expect(invoked.childSessionIds).toHaveLength(1)
+    // Bob never joined the room, so the legacy fallback refuses him.
+    await expect(ctx.collaboration.postBranchMessage(legacy.agent.session, {
+      actorId: ActorId('bob'),
+      text: 'me too @B',
+      mentions: [ActorId('model-b')],
+    })).rejects.toMatchObject({ code: 'COLLAB_ACCESS_DENIED' })
+    await legacy.dispose()
+  })
+
+  it('nests one more level from a sub-branch', async () => {
+    const { ctx, branch } = await setupBranch([
+      textResponse('A first'),
+      textResponse('B verdict'),
+      textResponse('A cross-check'),
+    ])
+    const invoked = await ctx.collaboration.postBranchMessage(branch.session, {
+      actorId: ActorId('alice'),
+      text: 'check @B',
+      mentions: [ActorId('model-b')],
+    })
+    const sub = ctx.agents.get(invoked.childSessionIds[0]!)
+    await sub!.whenIdle()
+    const nested = await ctx.collaboration.postBranchMessage(sub!.session, {
+      actorId: ActorId('alice'),
+      text: 'and you @A',
+      mentions: [ActorId('model-a')],
+    })
+    expect(nested.failedActorIds).toEqual([])
+    const grandchild = ctx.agents.get(nested.childSessionIds[0]!)
+    expect(grandchild).toBeDefined()
+    await grandchild!.whenIdle()
+    expect(ctx.collaboration.branchOf(grandchild!.session)).toEqual({
+      roomId: sub!.session.id,
+      actorId: ActorId('model-a'),
+    })
   })
 })

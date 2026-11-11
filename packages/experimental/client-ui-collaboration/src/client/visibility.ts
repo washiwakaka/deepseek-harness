@@ -34,6 +34,30 @@ export function isOwnedBranch(
   return false
 }
 
+/**
+ * Whether this branch's parent is itself a mention branch, so its replies
+ * publish to that branch rather than to the room.
+ * @param list - Host session catalog, including collaboration projections.
+ * @param sessionId - candidate sub-branch Session.
+ * @returns true when the Session listing this one as a child is itself listed as a child.
+ */
+export function isNestedBranch(
+  list: SessionListState,
+  sessionId: SessionId | string,
+): boolean {
+  const ids = new Set<string>([...list.ids, ...Object.keys(list.projectionsBySession)])
+  const childIds = new Set<string>()
+  const parents: string[] = []
+  for (const id of ids) {
+    const room = collaborationOf(list, id)
+    for (const child of Object.values(room?.children ?? {})) {
+      childIds.add(child)
+      if (child === sessionId) parents.push(id)
+    }
+  }
+  return parents.some(parent => childIds.has(parent))
+}
+
 function collaborationOf(list: SessionListState, id: string): CollaborationListView | undefined {
   const values = list.projectionsBySession[id as SessionId]?.values as
     | { readonly collaboration?: CollaborationListView }

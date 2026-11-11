@@ -55,7 +55,7 @@ changes:
 <a id="compatibility"></a>
 ## 兼容性
 
-已有会话仍然有效。collaboration/occupant-removed 是新的 required-on-read 协作事件：不认识它的旧 harness 会拒绝该日志而不是跳过，与其他 collaboration/* 事件一致。branchSessionId 和 assistantSeq 是可选字段；旧读端会忽略，旧日志没有发布来源，因此重复发布检测不适用于本次变更之前发布的回复。共享根（user/message、developer/message、agent/inbox/spliced、session/title-llm-request）只是把较早的协作记录重新挂到合并后的 master 历史上：这里列出的 union 变体和可选属性都已由引入它们各自的记录确认过（子代理 settlement 归属、retry 控制输入、协作房间事件），读端行为不变。Session header 版本不变。
+已有会话仍然有效。collaboration/occupant-removed 是新的 required-on-read 协作事件：不认识它的旧 harness 会拒绝该日志而不是跳过，与其他 collaboration/* 事件一致。branchSessionId 和 assistantSeq 是可选字段；旧读端会忽略，旧日志两个字段都没有，因此重复发布检测不适用于本次变更之前发布的回复。共享根（user/message、developer/message、agent/inbox/spliced、session/title-llm-request）只是把较早的协作记录重新挂到合并后的 master 历史上：这里列出的 union 变体和可选属性都已由引入它们各自的记录确认过（子代理 settlement 归属、retry 控制输入、协作房间事件），读端行为不变。Session header 版本不变。
 
 <a id="verification"></a>
 ## 验证
