@@ -143,10 +143,12 @@ describe('identity browser plugin', () => {
     expect(b.unmount).toHaveBeenCalled()
   })
 
-  it('refreshes the Session list when the signed-in account changes', async () => {
+  it('refreshes the Session and Workspace lists when the signed-in account changes', async () => {
     const b = await bench()
     const refresh = vi.fn(async () => {})
     b.ctx.provide('sessions', { refresh })
+    const refreshList = vi.fn()
+    b.ctx.provide('workspaces', { refreshList })
     const remote = b.ctx.get('remote.identity') as {
       status: ReturnType<typeof vi.fn>
       loginPassword: ReturnType<typeof vi.fn>
@@ -190,15 +192,19 @@ describe('identity browser plugin', () => {
     const entry = b.ctx.slots.entries('sidebar.account')[0]
     const injected = entry?.inject?.() as never as AccountChipInjected
     expect(refresh).not.toHaveBeenCalled()
+    expect(refreshList).not.toHaveBeenCalled()
     await injected.login('alice', 'password1')
     await vi.waitFor(() => {
       expect(refresh).toHaveBeenCalledTimes(1)
+      expect(refreshList).toHaveBeenCalledTimes(1)
     })
     await injected.joinLine('core')
     expect(refresh).toHaveBeenCalledTimes(1)
+    expect(refreshList).toHaveBeenCalledTimes(1)
     await injected.logout()
     await vi.waitFor(() => {
       expect(refresh).toHaveBeenCalledTimes(2)
+      expect(refreshList).toHaveBeenCalledTimes(2)
     })
     await dispose()
   })

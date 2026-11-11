@@ -35,6 +35,8 @@ Client 入口提供 `ClientWorkspaceModel` 和 `createWorkspaceStateStream()`。
 
 [Workspace 注册表](../../workspace/workspace/README.zh.md#first-use-workspace)负责资格判断、目录创建和持久化初始化。已有默认工作区直接返回，不再查询 Documents，也不会被重命名或迁移。不满足首次使用条件时返回 `undefined`，启动流程可将目录选择留给用户。查询和创建失败遵循标准 Remote 错误处理。初始化不创建 Session，也不发送消息。
 
+Client service 的 `workspaces.refreshList()` 会重启 follow 流，让 Host 发送一份新基线。Host 按调用方当前权限过滤每份基线，因此登录账号变化时调用方要调它；否则浏览器一直保留最初拿到的列表。
+
 `./default-workspace` 为浏览器消费方导出 `DEFAULT_WORKSPACE_DIRECTORY` 与 `workspaceDisplayTitle(title, localizedDefault)`：仍保留自动标题的工作区按读者语言显示默认名称，其他标题一律原样显示。被用户重命名为 `default-workspace` 的工作区，或从选择器采用的同名文件夹，也会按默认工作区显示；除显示之外没有其他行为依赖该判断。
 
 | 配置 | 默认值 | 用途 |

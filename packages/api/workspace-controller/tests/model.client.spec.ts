@@ -191,6 +191,18 @@ describe('ClientWorkspaceModel', () => {
     expect(model.getSnapshot()).toBe(before)
   })
 
+  it('restarts the follow stream on refreshList only while a refresher is installed', () => {
+    const model = modelFor()
+    expect(() => { model.refreshList() }).not.toThrow()
+    const restart = vi.fn()
+    model.setRefresher(restart)
+    model.refreshList()
+    expect(restart).toHaveBeenCalledTimes(1)
+    model.setRefresher(undefined)
+    model.refreshList()
+    expect(restart).toHaveBeenCalledTimes(1)
+  })
+
   it('replaces reconnect state and applies ordered increments', () => {
     const model = modelFor()
     expect(model.getSnapshot()).toMatchObject({ phase: 'pending', state: 'loading' })

@@ -35,6 +35,8 @@ The Client entry provides `ClientWorkspaceModel` and `createWorkspaceStateStream
 
 The [Workspace registry](../../workspace/workspace/README.md#first-use-workspace) owns eligibility, directory creation, and durable initialization. An existing default Workspace is returned without another Documents lookup and is never renamed or relocated. Ineligible first use returns `undefined`, so startup can leave directory selection to the user. Lookup and creation failures use standard Remote error handling. Initialization creates no Session and sends no message.
 
+The Client service's `workspaces.refreshList()` restarts the follow stream so the Host sends a fresh baseline. The Host filters each baseline by the caller's current access, so callers invoke it when the signed-in account changes; without it a browser keeps the list it was first given.
+
 `DEFAULT_WORKSPACE_DIRECTORY` and `workspaceDisplayTitle(title, localizedDefault)` are published from `./default-workspace` for browser consumers: a Workspace still carrying the automatic title reads as the reader's localized default name, and every other title reads verbatim. A Workspace the user renamed to exactly `default-workspace` — or a folder of that name adopted from the picker — is labeled as the default; nothing else depends on the distinction.
 
 | Configuration | Default | Purpose |

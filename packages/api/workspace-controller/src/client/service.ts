@@ -101,6 +101,12 @@ export interface IWorkspaces {
    */
   unpinSession(sessionId: SessionId): Promise<void>
   /**
+   * Refetch the Workspace list baseline. The Host filters each baseline by
+   * the caller's current access, so callers invoke this after the signed-in
+   * account changes.
+   */
+  refreshList(): void
+  /**
    * Move a Session within one Workspace account.
    * @param workspaceId - owning Workspace.
    * @param sessionId - Session to move.
@@ -173,6 +179,10 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async unpinSession(sessionId: SessionId): Promise<void> {
     const result = await this.model.unpinSession(sessionId)
     if (!result.ok) throw commandError('session unpin', result.error)
+  }
+
+  refreshList(): void {
+    this.model.refreshList()
   }
 
   async insertSessionBefore(

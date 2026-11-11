@@ -54,6 +54,8 @@
 | [agent-team.md](agent-team.zh.md) | Agent Teams：子代理树共享的任务 DAG 与任务归属 |
 | [liveshare.md](liveshare.zh.md) | 可选的 LiveShare bundle：嵌套分享模式、fork 的上限与持久性、上限安装，以及共享会话外部驱动轮次所受的约束 |
 | [claude-code-mods.md](claude-code-mods.zh.md) | 经实验性桥接运行的 Claude Code 模组：与 Claude Code 不同的每个事件、`$` 成员、链规则、绘制特性与示例模组 |
+| [collaboration.md](collaboration.zh.md) | 实验性协作房间：房间与分支 Session、占用关系、提及投递与占用 ACL |
+| [identity.md](identity.zh.md) | 实验性本地身份：具名账号、Peer 绑定与按 actor 的 Session 访问 |
 | [web.md](web.zh.md) | Web 访问 seam：`WebSearchRequest`/`Result`、`WebFetchRequest`/`Result`、`WebFetchBody`、提供方可用性、`WebError` |
 | [spill.md](spill.zh.md) | spill 存储 seam：`SaveTextSpill`、`SpillOwner`/`SpillSource`、`SpillRef`、品牌类型 `SpillLocator` |
 | [workflow.md](workflow.zh.md) | 工作流 seam：`WorkflowStartRequest`、`WorkflowMeta`、`WorkflowRun`/`Result`、`workflow/*` 事件载荷、`WorkflowError` 致命性 |

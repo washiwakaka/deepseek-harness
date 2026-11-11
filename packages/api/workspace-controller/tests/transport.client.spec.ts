@@ -101,6 +101,28 @@ describe('Workspace Controller Client apply', () => {
     })
   })
 
+  pluginTest('reopens the follow generation when the Workspace list is refreshed', async ({ mock, start }) => {
+    const client = await pluginClient(mock, start, followGenerations([
+      openStream([baseline('before-sign-in')]),
+      openStream([baseline('after-sign-in')]),
+    ]))
+    await vi.waitFor(() => {
+      expect(client.ctx.workspaces.list.getSnapshot()).toMatchObject({
+        phase: 'ready',
+        items: [{ workspaceId: 'before-sign-in' }],
+      })
+    })
+
+    client.ctx.workspaces.refreshList()
+
+    await vi.waitFor(() => {
+      expect(client.ctx.workspaces.list.getSnapshot()).toMatchObject({
+        items: [{ workspaceId: 'after-sign-in' }],
+      })
+    })
+    expect(streamStates(client.mock)).toEqual(['cancelled', 'open'])
+  })
+
   pluginTest('publishes exhausted carrier retries as a gateway/internal error state', async ({ mock, start }) => {
     // Neither generation reaches an accepted baseline, so the retry budget runs
     // out and the escaping carrier failure crosses the stream boundary marked.
@@ -362,6 +384,10 @@ describe('WorkspaceController', () => {
 
     expect(controller.list).toBe(model)
     expect(client.ctx.workspaces.list).toBe(model)
+    const restart = vi.fn()
+    model.setRefresher(restart)
+    controller.refreshList()
+    expect(restart).toHaveBeenCalledTimes(1)
     await expect(controller.initializeDefault(new AbortController().signal)).resolves.toMatchObject({ workspaceId: 'default' })
     await expect(controller.create({ path: '/work/created' })).resolves.toMatchObject({ workspaceId: 'created' })
     await expect(controller.rename(wid('one'), 'renamed')).resolves.toMatchObject({ title: 'renamed' })

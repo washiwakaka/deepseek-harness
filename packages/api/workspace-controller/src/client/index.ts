@@ -53,8 +53,12 @@ export function apply(ctx: Context): void {
     failed: (error) => { model.handleStreamFailure(error) },
   })
   control.start()
+  model.setRefresher(() => { control.restart() })
   ctx.effect(
-    () => async () => { await control.dispose() },
+    () => async () => {
+      model.setRefresher(undefined)
+      await control.dispose()
+    },
     'workspace-controller.client.control',
   )
 }

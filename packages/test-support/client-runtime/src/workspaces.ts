@@ -191,6 +191,12 @@ export class TestWorkspaces implements IWorkspaces {
     })
   }
 
+  /** Refetch the Workspace list baseline (recorded; default no-op). */
+  refreshList(): void {
+    this.calls.push({ method: 'refreshList', args: [] })
+    this.stubs.get('refreshList')?.()
+  }
+
   /**
    * Unpin a session (recorded). The default mirrors the production face's
    * observable effect: the id leaves the list state's pin set.

@@ -269,6 +269,38 @@ describe('collaboration identity posts', () => {
     }).kind).toBe('allow')
   })
 
+  it('authorizes session/create naming the creator\'s room and denies another account', async () => {
+    const { ctx } = await setup()
+    ctx.provide('workspaceRegistry', {
+      list: () => [{ id: 'ws-alpha', sessionIds: [] }],
+    })
+    await ctx.plugin(RemoteAccessService)
+    await ctx.identity.registerPassword('alice', 'password1', 'Alice')
+    await ctx.identity.registerPassword('bob', 'password1', 'Bob')
+    await ctx.identity.loginPassword('alice', 'password1')
+    const alice = caller(ctx, 'peer-alice' as PeerId)
+    await alice.identity.loginPassword('alice', 'password1')
+    // A room still reads blank until its first turn, so starting a Session
+    // in its Workspace names it as the reuse candidate.
+    const room = await ctx.agentLoop.create(SessionId('blank-room'), { provider: 'mock', model: 'mock' })
+    const resources = [
+      { kind: 'workspace', id: 'ws-alpha' as never },
+      { kind: 'session', id: room.session.id },
+    ] as const
+    expect(ctx.remoteAccess.decide({
+      principal: { kind: 'local-identity', browserSessionId: 'peer-alice' as PeerId },
+      action: 'session/create',
+      resources: [...resources],
+    }).kind).toBe('allow')
+    const bob = caller(ctx, 'peer-bob' as PeerId)
+    await bob.identity.loginPassword('bob', 'password1')
+    expect(ctx.remoteAccess.decide({
+      principal: { kind: 'local-identity', browserSessionId: 'peer-bob' as PeerId },
+      action: 'session/create',
+      resources: [...resources],
+    }).kind).not.toBe('allow')
+  })
+
   it('allows Config humans when identity is not loaded', async () => {
     const ctx = new Context()
     contexts.push(ctx)

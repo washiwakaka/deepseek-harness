@@ -52,8 +52,9 @@ export interface LocalIdentityAccessFacts {
   fullGlobalActions?: () => readonly RemoteAccessAction[]
   /**
    * Durable Workspaces listed for every signed-in account.
-   * `session/create` is a workspace-resource call, so this list must include
-   * every Workspace the account may open or the Gateway denies creation.
+   * `session/create` names its Workspace as a resource, so this list must
+   * include every Workspace the account may open or the Gateway denies
+   * creation.
    */
   listedWorkspaces?: () => readonly WorkspaceId[]
 }
@@ -105,6 +106,11 @@ const SESSION_READ_ACTIONS: readonly RemoteAccessAction[] = [
 ]
 
 const SESSION_WRITE_ACTIONS: readonly RemoteAccessAction[] = [
+  // `session/create` also names its reuse-candidate Session as a resource:
+  // an occupant may name a Session they write (a room still reads blank
+  // until its first turn), and the Host revalidates blankness and Workspace
+  // membership before reusing it.
+  'session/create',
   'session/prompt',
   'session/cancel',
   'session/rename',

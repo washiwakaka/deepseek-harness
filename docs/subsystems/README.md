@@ -54,6 +54,8 @@ One page per subsystem of the DeepSeek Harness: what it is, the data structures 
 | [agent-team.md](agent-team.md) | Agent Teams: shared task DAG and task ownership for a subagent tree |
 | [liveshare.md](liveshare.md) | the opt-in LiveShare bundle: nested share modes, a fork's ceiling and durability, enforcement installation, and the constraint a shared Session's externally driven turns run under |
 | [claude-code-mods.md](claude-code-mods.md) | Claude Code mods through the experimental bridge: every event, `$` member, chain rule, drawing feature, and example mod that differs from Claude Code |
+| [collaboration.md](collaboration.md) | experimental collaboration rooms: room and branch Sessions, occupancy, mention delivery, and the occupancy ACL |
+| [identity.md](identity.md) | experimental local identity: named accounts, Peer binding, and per-actor Session access |
 | [web.md](web.md) | the web access seam: `WebSearchRequest`/`Result`, `WebFetchRequest`/`Result`, `WebFetchBody`, provider availability, `WebError` |
 | [spill.md](spill.md) | the spill storage seam: `SaveTextSpill`, `SpillOwner`/`SpillSource`, `SpillRef`, the branded `SpillLocator` |
 | [workflow.md](workflow.md) | the workflow seam: `WorkflowStartRequest`, `WorkflowMeta`, `WorkflowRun`/`Result`, the `workflow/*` event payloads, `WorkflowError` fatality |

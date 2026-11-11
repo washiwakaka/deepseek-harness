@@ -151,6 +151,19 @@ describe('local-identity session access policy', () => {
     expect(allows(policy, ALICE, 'collaboration/postMessage', { kind: 'session', id: BLANK })).toBe(true)
   })
 
+  it('lets an occupant name their own Session on session/create but not anyone else\'s', () => {
+    // A room still reads blank until its first turn, so the composer names
+    // it as the reuse candidate when its owner starts a Session there.
+    expect(allows(policy, ALICE, 'session/create', { kind: 'session', id: ROOM })).toBe(true)
+    expect(allows(policy, ALICE, 'session/create', { kind: 'session', id: ALICE_CHILD })).toBe(true)
+    expect(allows(policy, BOB, 'session/create', { kind: 'session', id: BOB_ROOM })).toBe(true)
+    expect(allows(policy, ALICE, 'session/create', { kind: 'session', id: BOB_ROOM })).toBe(false)
+    expect(allows(policy, BOB, 'session/create', { kind: 'session', id: ROOM })).toBe(false)
+    // A read-only admin may not name someone else's Session for creation.
+    expect(allows(policy, ADMIN, 'session/create', { kind: 'session', id: ROOM })).toBe(false)
+    expect(allows(policy, UNSIGNED, 'session/create', { kind: 'session', id: ROOM })).toBe(false)
+  })
+
   it('does not offer a claim for a non-root Session such as a subagent child', () => {
     const childLike = SessionId('blank-seeded')
     const rootPolicy = createLocalIdentityAccessPolicy({

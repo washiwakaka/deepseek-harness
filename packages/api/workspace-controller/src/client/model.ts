@@ -79,6 +79,8 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   /** Host Workspace ids are never reused, so delayed data cannot resurrect a removed row. */
   private readonly removedIds = new Set<WorkspaceId>()
   private readonly listeners = new Set<() => void>()
+  /** Follow-stream restart installed by the Client plugin; absent before it applies. */
+  private refresher: (() => void) | undefined
   private snapshotCache: WorkspaceSnapshot
   private snapshotDirty = false
   private notificationPending = false
@@ -324,6 +326,21 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     this.state = 'error'
     this.error = error
     this.invalidate()
+  }
+
+  /**
+   * Install the follow-stream restart used to refetch the baseline. The
+   * server filters each generation's baseline by the caller's current
+   * access, so a restart is how a changed account picks up its Workspaces.
+   * @param refresher - restart callback, or `undefined` to detach.
+   */
+  setRefresher(refresher: (() => void) | undefined): void {
+    this.refresher = refresher
+  }
+
+  /** Restart the follow stream so a fresh baseline replaces the projection. */
+  refreshList(): void {
+    this.refresher?.()
   }
 
   /**
