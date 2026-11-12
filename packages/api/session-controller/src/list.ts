@@ -44,11 +44,18 @@ const imageLimitsSchema = z.object({
  * @param event - next committed Session event.
  * @returns the original or advanced metadata value.
  */
+/**
+ * Event types that give a Session user-visible content. A collaboration room
+ * post counts even though the room Session itself never runs a turn; without
+ * it the room reads as blank forever and never earns a sidebar row.
+ */
+const CONTENT_EVENT_TYPES: ReadonlySet<string> = new Set(['turn/start', 'collaboration/message'])
+
 export function applySessionListMetadata(
   state: SessionListMetadata,
   event: SessionEvent,
 ): SessionListMetadata {
-  const blank = state.blank && event.type !== 'turn/start'
+  const blank = state.blank && !CONTENT_EVENT_TYPES.has(event.type)
   const lastPromptAt = event.type === 'user/message' && event.data.source.kind === 'user'
     ? event.time
     : state.lastPromptAt
@@ -95,7 +102,7 @@ export class ApiSessionList {
       init: () => ({ blank: true, lastPromptAt: null }),
       apply: applySessionListMetadata,
       wire: { viewSchema: sessionListMetadataSchema, view: state => state },
-      stateVersion: 1,
+      stateVersion: 2,
     })
     await this.ctx.sessionProjections.register<'imageLimits', null>({
       key: 'imageLimits',

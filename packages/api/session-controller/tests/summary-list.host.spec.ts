@@ -91,6 +91,24 @@ function seedSession(ctx: Context): { id: SessionId } {
 }
 
 describe('session.list summary payload', () => {
+  it('reads a collaboration room as non-blank from its posts alone', async () => {
+    const { ctx } = await harness()
+    const session = ctx.sessions.create(undefined, { meta: { cwd: '/workspace', agentPreset: 'standard' } })
+    session.append('collaboration/message', {
+      version: 1,
+      id: 'msg-1',
+      actorId: 'alice',
+      kind: 'human',
+      name: 'Alice',
+      text: 'hello room',
+      mentions: [],
+    } as never)
+    const response = await (await remote(ctx)).list({})
+    if (!response.ok) throw new Error('unreachable')
+    const row = response.value.items.find(item => item.sessionId === session.id)
+    expect(row?.projections?.values.sessionListMetadata).toMatchObject({ blank: false })
+  })
+
   it('carries every registered wire key except the summary-excluded units', async () => {
     const { ctx } = await harness()
     const { id } = seedSession(ctx)
