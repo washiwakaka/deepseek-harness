@@ -1,0 +1,5 @@
+.mark {
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}

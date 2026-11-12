@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-experimental-collaboration/client'
-import { isNestedBranch, isOwnedBranch } from '../src/client/visibility.ts'
+import { isNestedBranch, isOwnedBranch, isRoomSession } from '../src/client/visibility.ts'
 
 const ROOM = SessionId('room')
 const BRANCH = SessionId('branch')
@@ -86,6 +86,49 @@ describe('collaboration branch ownership', () => {
     expect(isNestedBranch(snapshot, BRANCH)).toBe(false)
     expect(isNestedBranch(snapshot, ROOM)).toBe(false)
     expect(isOwnedBranch('alice', snapshot, sub)).toBe(true)
+  })
+
+  it('marks the room itself, never its branches or plain Sessions', () => {
+    const snapshot = list({
+      [ROOM]: {
+        state: 'ready',
+        error: null,
+        values: {
+          collaboration: {
+            occupants: ['alice', 'bob'] as never,
+            children: { aliceA: BRANCH },
+            childOwners: { [BRANCH]: 'alice' } as never,
+            messages: [],
+            watermarks: {},
+          },
+        },
+      },
+      [BRANCH]: {
+        state: 'ready',
+        error: null,
+        values: {
+          collaboration: {
+            occupants: ['alice', 'bob'] as never,
+            children: {},
+            childOwners: {},
+            messages: [],
+            watermarks: {},
+          },
+        },
+      },
+    })
+    expect(isRoomSession(snapshot, ROOM)).toBe(true)
+    expect(isRoomSession(snapshot, BRANCH)).toBe(false)
+    const plain = list({ [SessionId('plain')]: { state: 'ready', error: null, values: {} } })
+    expect(isRoomSession(plain, 'plain')).toBe(false)
+    const solo = list({
+      [ROOM]: {
+        state: 'ready',
+        error: null,
+        values: { collaboration: { occupants: [] as never, children: {}, messages: [], watermarks: {} } },
+      },
+    })
+    expect(isRoomSession(solo, ROOM)).toBe(false)
   })
 
   it('treats a child without owner as shared among occupants', () => {

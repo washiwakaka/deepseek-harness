@@ -35,6 +35,27 @@ export function isOwnedBranch(
 }
 
 /**
+ * Whether this Session is a collaboration room rather than a branch or an
+ * ordinary conversation: it carries occupants and no room lists it as a child.
+ * @param list - Host session catalog, including collaboration projections.
+ * @param sessionId - candidate room Session.
+ * @returns true for a room Session.
+ */
+export function isRoomSession(
+  list: SessionListState,
+  sessionId: SessionId | string,
+): boolean {
+  const room = collaborationOf(list, sessionId)
+  if (room?.occupants === undefined || room.occupants.length === 0) return false
+  const ids = new Set<string>([...list.ids, ...Object.keys(list.projectionsBySession)])
+  for (const id of ids) {
+    const parent = collaborationOf(list, id)
+    if (Object.values(parent?.children ?? {}).includes(sessionId)) return false
+  }
+  return true
+}
+
+/**
  * Whether this branch's parent is itself a mention branch, so its replies
  * publish to that branch rather than to the room.
  * @param list - Host session catalog, including collaboration projections.

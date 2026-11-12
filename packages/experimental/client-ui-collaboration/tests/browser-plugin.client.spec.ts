@@ -12,6 +12,7 @@ import { RoomBadge } from '../src/client/RoomBadge.tsx'
 import { RoomMessageView } from '../src/client/RoomMessageView.tsx'
 import { RoomPostButton } from '../src/client/RoomPostButton.tsx'
 import { BranchPublishAction } from '../src/client/BranchPublishAction.tsx'
+import { RoomRowMark } from '../src/client/RoomRowMark.tsx'
 import { RoomThinkingStatus } from '../src/client/RoomThinkingStatus.tsx'
 import { RoomThinkingView } from '../src/client/RoomThinkingView.tsx'
 import { collaborationMessageDefinition } from '../src/client/message-definition.ts'
@@ -138,6 +139,7 @@ async function bench() {
       'conversation.input.right': { kind: 'list', scope: 'session' },
       'conversation.composer.dock': { kind: 'list', scope: 'session' },
       'conversation.chat.assistant-actions': { kind: 'list', scope: 'session' },
+      'sidebar.session.row.trailing': { kind: 'list', scope: 'root', inline: true },
     },
   } as never, () => null)
   let dispose: (() => Promise<void>) | undefined
@@ -365,6 +367,12 @@ describe('collaboration-room browser plugin', () => {
     await expect(actionInjected.branchInfo('child-a', 'msg-1')).resolves.toEqual({ branch: true, ownReply: true })
     await expect(actionInjected.branchInfo('child-a', 'msg-other')).resolves.toEqual({ branch: true, ownReply: false })
     await expect(actionInjected.branchInfo('sess-1', 'msg-1')).resolves.toEqual({ branch: false, ownReply: false })
+
+    const rowMark = b.ctx.slots.entries('sidebar.session.row.trailing')
+      .find(entry => entry.component === RoomRowMark)
+    expect(rowMark).toMatchObject({ options: { id: 'collaboration-room-mark', order: 20 } })
+    const rowMarkInjected = rowMark?.inject?.() as { hooks: { sessions: unknown } }
+    expect(rowMarkInjected.hooks.sessions).toBeDefined()
     await b.dispose()
   })
 

@@ -17,6 +17,7 @@ import { RoomBadge, type RoomBadgeInjected } from './RoomBadge.tsx'
 import { RoomMessageView, type RoomMessageInjected } from './RoomMessageView.tsx'
 import { RoomPostButton, type RoomPostInjected } from './RoomPostButton.tsx'
 import { BranchPublishAction, type BranchPublishInjected } from './BranchPublishAction.tsx'
+import { RoomRowMark, type RoomRowMarkInjected } from './RoomRowMark.tsx'
 import { RoomThinkingStatus, type RoomThinkingStatusInjected } from './RoomThinkingStatus.tsx'
 import { RoomThinkingView, type RoomThinkingInjected } from './RoomThinkingView.tsx'
 import { collaborationMessageDefinition } from './message-definition.ts'
@@ -340,6 +341,18 @@ function registerCollaborationUi(ctx: ClientContext): void {
         hooks: { actors, sessions: ctx.sessions.list },
       }),
     }, BranchPublishAction),
+  )
+  ctx.slots.inject(
+    'sidebar.session.row.trailing',
+    () => ctx.slots.register({
+      name: 'sidebar.session.row.trailing',
+      id: 'collaboration-room-mark',
+      order: 20,
+      locale: NS,
+      inject: (): RoomRowMarkInjected => ({
+        hooks: { sessions: ctx.sessions.list },
+      }),
+    }, RoomRowMark),
   )
 }
 

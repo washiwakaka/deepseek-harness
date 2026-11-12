@@ -13,6 +13,7 @@ import { RoomBadge } from '../src/client/RoomBadge.tsx'
 import { RoomMessageView } from '../src/client/RoomMessageView.tsx'
 import { RoomPostButton } from '../src/client/RoomPostButton.tsx'
 import { BranchPublishAction } from '../src/client/BranchPublishAction.tsx'
+import { RoomRowMark } from '../src/client/RoomRowMark.tsx'
 import { RoomThinkingStatus } from '../src/client/RoomThinkingStatus.tsx'
 import { RoomThinkingView } from '../src/client/RoomThinkingView.tsx'
 
@@ -21,6 +22,7 @@ const Badge = RoomBadge as never as TestView
 const MessageView = RoomMessageView as never as TestView
 const PostButton = RoomPostButton as never as TestView
 const PublishAction = BranchPublishAction as never as TestView
+const RowMark = RoomRowMark as never as TestView
 const ThinkingStatus = RoomThinkingStatus as never as TestView
 const ThinkingView = RoomThinkingView as never as TestView
 
@@ -691,6 +693,51 @@ describe('collaboration-room views', () => {
     await vi.waitFor(() => {
       expect(screen.getByRole('button', { name: 'This answer is on the parent branch' })).toHaveProperty('disabled', true)
     })
+  })
+
+  it('marks only the room row with the multi-person icon', () => {
+    const list = {
+      ids: [SessionId('room'), SessionId('child-1'), SessionId('plain')],
+      byId: {},
+      phase: 'ready',
+      projectionsBySession: {
+        [SessionId('room')]: {
+          state: 'ready',
+          error: null,
+          values: {
+            collaboration: {
+              occupants: ['alice', 'bob'],
+              children: { a: SessionId('child-1') },
+              childOwners: { [SessionId('child-1')]: 'alice' },
+              messages: [],
+              watermarks: {},
+            },
+          },
+        },
+        [SessionId('child-1')]: {
+          state: 'ready',
+          error: null,
+          values: {
+            collaboration: {
+              occupants: ['alice', 'bob'],
+              children: {},
+              childOwners: {},
+              messages: [],
+              watermarks: {},
+            },
+          },
+        },
+        [SessionId('plain')]: { state: 'ready', error: null, values: {} },
+      },
+    } as never as SessionListState
+    const room = render(<RowMark t={t} sessionId={SessionId('room')} useSessions={selectList(list)} /> as never)
+    expect(screen.getByRole('img', { name: 'Collaboration room' })).toBeTruthy()
+    room.unmount()
+    render(<RowMark t={t} sessionId={SessionId('child-1')} useSessions={selectList(list)} /> as never)
+    expect(screen.queryByRole('img', { name: 'Collaboration room' })).toBeNull()
+    cleanup()
+    render(<RowMark t={t} sessionId={SessionId('plain')} useSessions={selectList(list)} /> as never)
+    expect(screen.queryByRole('img', { name: 'Collaboration room' })).toBeNull()
   })
 
   it('publishes one chosen reply from a branch message action', async () => {
