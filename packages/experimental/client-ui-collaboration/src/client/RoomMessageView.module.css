@@ -32,6 +32,11 @@
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
   font-weight: 500;
+  text-align: left;
+}
+
+.wrap[data-side='self'] .name {
+  text-align: right;
 }
 
 .wrap[data-side='self'] .name {
