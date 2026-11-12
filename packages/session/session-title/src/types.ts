@@ -26,6 +26,15 @@ export interface SessionTitleModelIdentity {
 
 /** Durable ownership record for an accepted session title. */
 export type SessionTitleSource =
+  | {
+    /**
+     * System-supplied initial name written at session creation, before any
+     * user message exists. It is a placeholder: automatic generation treats
+     * the session as still untitled and may replace it, and a later
+     * `default` write may upgrade it; only a `user` rename pins the title.
+     */
+    readonly kind: 'default'
+  }
   | { readonly kind: 'fallback' }
   | {
     readonly kind: 'provider'
@@ -41,9 +50,9 @@ export type SessionTitleSource =
 export interface SessionTitleEventData {
   /** Normalized non-empty title text. */
   readonly title: string
-  /** Exact human `user/message` seqs used to derive this title; empty for an explicit user rename. */
+  /** Exact human `user/message` seqs used to derive this title; empty for an explicit user rename or a system default. */
   readonly messageSeqs: SessionSeq[]
-  /** Whether the built-in fallback, a registered provider, or the user supplied the title. */
+  /** Whether a system default, the built-in fallback, a registered provider, or the user supplied the title. */
   readonly source: SessionTitleSource
 }
 

@@ -11,6 +11,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import type { PeerId, PeerScope, RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
 import IdentityService, { IDENTITY_CLOSED_PROVIDER } from '@deepseek-ai/dsh-experimental-identity'
+import SessionTitleService from '@deepseek-ai/dsh-session-title'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { MockAdapter } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import CollaborationService, { ActorId } from '../src/index.ts'
@@ -102,6 +103,26 @@ describe('collaboration identity posts', () => {
     await ctx.identity.loginPassword('alice', 'password1')
     const created = await ctx.agentLoop.create(SessionId('owned'), { provider: 'mock', model: 'mock' })
     expect(occupantsOf(created)).toEqual([ActorId('alice')])
+  })
+
+  it('names a freshly created Session after its creator, then as a room on first post', async () => {
+    const { ctx } = await setup()
+    await ctx.plugin(SessionTitleService, { fallbackMaxWords: 8, fallbackMaxBytes: 64, maxTitleBytes: 256 })
+    await ctx.identity.registerPassword('alice', 'password1', 'Alice')
+    await ctx.identity.loginPassword('alice', 'password1')
+    const created = await ctx.agentLoop.create(SessionId('named'), { provider: 'mock', model: 'mock' })
+    expect(ctx.sessionTitle.get(created.session)).toMatchObject({
+      title: 'Alice 的会话',
+      source: { kind: 'default' },
+    })
+    await ctx.collaboration.postMessage(created.session, {
+      actorId: ActorId('alice'),
+      text: 'hello room',
+    })
+    expect(ctx.sessionTitle.get(created.session)).toMatchObject({
+      title: 'Alice 的协作房间',
+      source: { kind: 'default' },
+    })
   })
 
   it('stamps the creating Remote Peer when conversation-created carries its id', async () => {

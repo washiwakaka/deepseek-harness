@@ -25,7 +25,9 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-用包含真人和 AI 占用者的 Config 名单挂载插件，或挂载 `@deepseek-ai/dsh-experimental-identity` 并把 `actors` 留空，让真人在那边注册。调用 `ctx.collaboration.postMessage(session, { actorId, text, mentions })`。普通聊天省略 `mentions`。点名 AI id 以启动那些子会话。点名真人 id 即邀请该占用者；此前房间只对创建人可见。第一次 @ 模型把分支命名为 `{模型} · {房间标题}`，在 header 上写入 `parentSession` 指向房间（从不写 `origin: 'subagent'`），侧边栏只把该分支给发起 @ 的真人看，并归在来源房间下面。发起 @ 的真人从分支发布后，最新 assistant 文本才进入房间。同一房间同一真人再 @ 同一模型会复用这条子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话；换一个房间再 @ 会新建子会话。进程重启后下一次 @ 会冷恢复已持久化的子会话。
+用包含真人和 AI 占用者的 Config 名单挂载插件，或挂载 `@deepseek-ai/dsh-experimental-identity` 并把 `actors` 留空，让真人在那边注册。调用 `ctx.collaboration.postMessage(session, { actorId, text, mentions })`。普通聊天省略 `mentions`。点名 AI id 以启动那些子会话。点名真人 id 即邀请该占用者；此前房间只对创建人可见。第一次 @ 模型把分支命名为 `{模型} 分叉 · {属主名}`，在 header 上写入 `parentSession` 指向房间（从不写 `origin: 'subagent'`），侧边栏只把该分支给发起 @ 的真人看，并归在来源房间下面。发起 @ 的真人从分支发布后，最新 assistant 文本才进入房间。同一房间同一真人再 @ 同一模型会复用这条子会话；另一占用者 @ 同一模型会新建仅自己可见的子会话；换一个房间再 @ 会新建子会话。进程重启后下一次 @ 会冷恢复已持久化的子会话。
+
+会话从初始化起就带系统默认标题，侧边栏从不出现没有名字的根会话或分支。开启 identity 时新根会话先叫 `{账号名} 的会话`；一旦被认领、或第一次按房间发帖，就变成 `{创建人名} 的协作房间`，之后谁发帖都不变。分支从被 @ 时起就叫 `{模型} 分叉 · {属主名}`。这些都是 `default` 来源标题：首轮提供方仍可替换根会话名与房间名，用户改名永远胜出，分支名保持钉住。
 
 ### 何时选择
 

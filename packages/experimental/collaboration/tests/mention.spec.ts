@@ -10,6 +10,7 @@ import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import SessionTitleService from '@deepseek-ai/dsh-session-title'
 import CollaborationService, {
   ActorId,
   COLLABORATION_MENTION_INSTRUCTION,
@@ -311,10 +312,10 @@ describe('collaboration mentions', () => {
     await expect(ctx.collaboration.publishFromChild(room.session, ActorId('alice'))).rejects.toThrow(/not a collaboration branch/)
   })
 
-  it('names a branch from the room title and model, and attaches it under the room', async () => {
-    expect(branchTitle(undefined, 'Qwen-Plus')).toBe('Qwen-Plus')
-    expect(branchTitle('  ', 'Qwen-Plus')).toBe('Qwen-Plus')
-    expect(branchTitle('Design review', 'Qwen-Plus')).toBe('Qwen-Plus · Design review')
+  it('names a branch after its model and owner, and attaches it under the room', async () => {
+    expect(branchTitle('Qwen-Plus')).toBe('Qwen-Plus 分叉')
+    expect(branchTitle('Qwen-Plus', '  ')).toBe('Qwen-Plus 分叉')
+    expect(branchTitle('Qwen-Plus', 'Alice')).toBe('Qwen-Plus 分叉 · Alice')
     const { ctx, room } = await setup([
       textResponse('A first'),
       textResponse('A second'),
@@ -340,7 +341,7 @@ describe('collaboration mentions', () => {
       mentions: [ActorId('model-a')],
     })
     const childId = childFor(room.session, 'alice', 'model-a')
-    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ id: childId }), 'A · Design review')
+    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ id: childId }), 'A 分叉 · Alice')
     expect(attachSession).toHaveBeenCalledWith(childId)
     expect(insertSessionBefore).toHaveBeenCalledWith(childId, undefined)
     expect(ctx.agents.get(childId!)?.session.header.parentSession).toBe(room.session.id)
@@ -348,7 +349,7 @@ describe('collaboration mentions', () => {
     rename.mockClear()
     titleOf = (session: { id: string }) => session.id === room.session.id
       ? { title: 'Design review', source: { kind: 'user' as const } }
-      : { title: 'A · Design review', source: { kind: 'user' as const } }
+      : { title: 'A 分叉 · Alice', source: { kind: 'user' as const } }
     await ctx.collaboration.postMessage(room.session, {
       actorId: ActorId('alice'),
       text: '@A again',
@@ -364,7 +365,7 @@ describe('collaboration mentions', () => {
       text: '@A dump',
       mentions: [ActorId('model-a')],
     })
-    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ id: childId }), 'A · Design review')
+    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ id: childId }), 'A 分叉 · Alice')
     rename.mockClear()
     titleOf = (session: { id: string }) => session.id === room.session.id
       ? { title: 'Design review', source: { kind: 'user' as const } }
@@ -443,6 +444,36 @@ describe('collaboration mentions', () => {
     await live!.whenIdle()
     const userTurns = live!.session.deriveMessages().filter(message => message.role === 'user')
     expect(userTurns).toHaveLength(2)
+  })
+
+  it('re-derives the branch owner name from the room record when a cold child is named again', async () => {
+    const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-collab-resume-name-'))
+    roots.push(storageRoot)
+    const first = await setupAt(storageRoot, [textResponse('A first')])
+    await first.ctx.collaboration.postMessage(first.room.session, {
+      actorId: ActorId('alice'),
+      text: '@A',
+      mentions: [ActorId('model-a')],
+    })
+    const childId = childFor(first.room.session, 'alice', 'model-a')
+    expect(childId).toBeDefined()
+    const roomId = first.room.session.id
+    const firstIndex = contexts.indexOf(first.ctx)
+    if (firstIndex >= 0) contexts.splice(firstIndex, 1)
+    await first.ctx.fiber.dispose()
+    const ctx2 = await mountCollab(storageRoot, [textResponse('A after restart')])
+    const rename = vi.fn()
+    stubService(ctx2, 'sessionTitle', {
+      get: () => undefined,
+      rename,
+    })
+    const room = (await ctx2.agents.resume({ resumeSessionId: roomId })).agent
+    await ctx2.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A again',
+      mentions: [ActorId('model-a')],
+    })
+    expect(rename).toHaveBeenCalledWith(expect.objectContaining({ id: childId }), 'A 分叉 · Alice')
   })
 
   it('reports a persisted child that cannot resume as a failed mention instead of failing the post', async () => {
@@ -733,5 +764,69 @@ describe('collaboration branch invokes', () => {
       roomId: sub!.session.id,
       actorId: ActorId('model-a'),
     })
+  })
+})
+
+describe('collaboration default titles', () => {
+  async function setupWithTitles(script: ConstructorParameters<typeof MockAdapter>[0]) {
+    const base = await setup(script)
+    await base.ctx.plugin(SessionTitleService, { fallbackMaxWords: 8, fallbackMaxBytes: 64, maxTitleBytes: 256 })
+    return base
+  }
+
+  it('upgrades the default session title to the room title on claim', async () => {
+    const { ctx, room } = await setupWithTitles([])
+    ctx.sessionTitle.initialize(room.session, 'Alice 的会话')
+    await ctx.collaboration.claimRoom(room.session, ActorId('alice'))
+    expect(ctx.sessionTitle.get(room.session)).toMatchObject({
+      title: 'Alice 的协作房间',
+      source: { kind: 'default' },
+    })
+  })
+
+  it('names the room on its first post and the branch after model and owner', async () => {
+    const { ctx, room } = await setupWithTitles([textResponse('A reply')])
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: 'first post',
+    })
+    expect(ctx.sessionTitle.get(room.session)).toMatchObject({
+      title: 'Alice 的协作房间',
+      source: { kind: 'default' },
+    })
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@A look',
+      mentions: [ActorId('model-a')],
+    })
+    const childId = childFor(room.session, 'alice', 'model-a')
+    const child = ctx.agents.get(childId!)
+    expect(child).toBeDefined()
+    expect(ctx.sessionTitle.get(child!.session)?.title).toBe('A 分叉 · Alice')
+  })
+
+  it('keeps the creator in the room title when another occupant posts', async () => {
+    const { ctx, room } = await setupWithTitles([])
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: '@Bob welcome',
+      mentions: [ActorId('bob')],
+    })
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('bob'),
+      text: 'thanks',
+    })
+    expect(ctx.sessionTitle.get(room.session)?.title).toBe('Alice 的协作房间')
+  })
+
+  it('does not rename a room the user already named', async () => {
+    const { ctx, room } = await setupWithTitles([])
+    await ctx.collaboration.claimRoom(room.session, ActorId('alice'))
+    ctx.sessionTitle.rename(room.session, 'Release war room')
+    await ctx.collaboration.postMessage(room.session, {
+      actorId: ActorId('alice'),
+      text: 'status',
+    })
+    expect(ctx.sessionTitle.get(room.session)?.title).toBe('Release war room')
   })
 })

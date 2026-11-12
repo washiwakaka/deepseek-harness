@@ -147,6 +147,7 @@ function sessionTitleUserMessageOf(event: SessionEvent): SessionTitleUserMessage
 /** Defensive copy of a logged title source (the snapshot must not alias log-owned objects). */
 function copySessionTitleSource(source: SessionTitleSource): SessionTitleSource {
   switch (source.kind) {
+    case 'default': return { kind: 'default' }
     case 'fallback': return { kind: 'fallback' }
     case 'provider': return {
       kind: 'provider',
@@ -431,6 +432,67 @@ export class SessionTitleService extends Service {
   }
 
   /**
+   * Accept a system-supplied initial title when the session has none yet.
+   * Appends a `session/title` event with the `default` source: it never
+   * overrides an existing title and never pins — automatic generation still
+   * treats the session as untitled, and {@link SessionTitleService.replaceDefault}
+   * may upgrade it. The title derives from no user message (`messageSeqs` is empty).
+   * @param session - exact live session to name.
+   * @param title - raw system-supplied name; normalized before acceptance.
+   * @returns the existing title when one already stands, else the accepted default.
+   * @throws {SessionTitleInvalidError} when the title normalizes to empty.
+   * @throws {Error} when the session is not live or the service is disposed.
+   */
+  initialize(session: Session, title: string): SessionTitleSnapshot | undefined {
+    this.assertServiceActive()
+    if (this.ctx.sessions.get(session.id) !== session) {
+      throw new Error(`session "${session.id}" is not live in this store`)
+    }
+    const current = this.get(session)
+    if (current !== undefined) return current
+    const normalized = normalizeSessionTitle(title, this.config.maxTitleBytes)
+    if (normalized.length === 0) {
+      throw new SessionTitleInvalidError('session title must contain visible characters')
+    }
+    session.append('session/title', {
+      title: normalized,
+      messageSeqs: [],
+      source: { kind: 'default' },
+    })
+    return this.get(session)
+  }
+
+  /**
+   * Replace a standing `default` title with a more specific system title
+   * (for example when a Session becomes a collaboration room). Any other
+   * standing title — fallback, provider, or user — is left untouched.
+   * @param session - exact live session to retitle.
+   * @param title - raw system-supplied name; normalized before acceptance.
+   * @returns the standing title after the call, or `undefined` when none stands.
+   * @throws {SessionTitleInvalidError} when the replacement normalizes to empty.
+   * @throws {Error} when the session is not live or the service is disposed.
+   */
+  replaceDefault(session: Session, title: string): SessionTitleSnapshot | undefined {
+    this.assertServiceActive()
+    if (this.ctx.sessions.get(session.id) !== session) {
+      throw new Error(`session "${session.id}" is not live in this store`)
+    }
+    const current = this.get(session)
+    if (current?.source.kind !== 'default') return current
+    const normalized = normalizeSessionTitle(title, this.config.maxTitleBytes)
+    if (normalized.length === 0) {
+      throw new SessionTitleInvalidError('session title must contain visible characters')
+    }
+    if (normalized === current.title) return current
+    session.append('session/title', {
+      title: normalized,
+      messageSeqs: [],
+      source: { kind: 'default' },
+    })
+    return this.get(session)
+  }
+
+  /**
    * Explicitly retry the registered provider, or materialize the built-in
    * fallback when no provider is registered.
    * @param session - exact live session to refresh.
@@ -516,12 +578,16 @@ export class SessionTitleService extends Service {
     }
     if (!this.serviceActive()) return
     // A user rename pins the title: no automatic revision may override it.
-    if (this.get(session)?.source.kind === 'user') return
+    const standing = this.get(session)
+    if (standing?.source.kind === 'user') return
     const registration = this.registration
     if (registration !== undefined && !registration.closing) {
       const count = this.titleInputOf(session).count
+      // A `default` title is a creation-time placeholder, not a content
+      // title: first-prompt generation still runs and may replace it.
       const shouldSchedule = registration.provider.automatic === 'all-prompts'
-        || (!session.header.isSeeded && session.header.origin !== 'subagent' && count === 1 && this.get(session) === undefined)
+        || (!session.header.isSeeded && session.header.origin !== 'subagent' && count === 1
+          && (standing === undefined || standing.source.kind === 'default'))
       if (shouldSchedule) {
         const state = this.stateFor(session)
         const revision = this.supersede(state, 'newer user message superseded title generation')

@@ -43,13 +43,31 @@ export { mentionRouteId, parseMentionRoute } from './catalog.ts'
 
 /**
  * Sidebar title for one model branch of a room.
- * @param roomTitle - latest room title, when the room has one.
  * @param modelName - display name of the mentioned model.
- * @returns `{model} · {room}` when the room is titled, otherwise the model name.
+ * @param ownerName - display name of the human who owns the branch, when known.
+ * @returns `{model} 分叉 · {owner}`, or `{model} 分叉` without a known owner.
  */
-export function branchTitle(roomTitle: string | undefined, modelName: string): string {
-  const room = roomTitle?.trim() ?? ''
-  return room.length === 0 ? modelName : `${modelName} · ${room}`
+export function branchTitle(modelName: string, ownerName?: string): string {
+  const owner = ownerName?.trim() ?? ''
+  return owner.length === 0 ? `${modelName} 分叉` : `${modelName} 分叉 · ${owner}`
+}
+
+/**
+ * Initial title for a root Session that has not been used as a room yet.
+ * @param ownerName - display name of the human the Session belongs to.
+ * @returns `{owner} 的会话`.
+ */
+export function sessionDefaultTitle(ownerName: string): string {
+  return `${ownerName} 的会话`
+}
+
+/**
+ * Title for a root Session once it is used as a collaboration room.
+ * @param ownerName - display name of the room creator.
+ * @returns `{owner} 的协作房间`.
+ */
+export function roomDefaultTitle(ownerName: string): string {
+  return `${ownerName} 的协作房间`
 }
 export { CollaborationError } from './error.ts'
 export {
@@ -341,6 +359,7 @@ export class CollaborationService extends Service {
           ],
         },
       })
+      this.nameAsRoom(session)
       if (resolved.ais.length === 0) return
       const state = this.journal.state(session)
       const throughSeq = state.messages.at(-1)?.seq
@@ -477,6 +496,77 @@ export class CollaborationService extends Service {
       this.assertCanAccess(session, author)
       await this.admitHumans(session, [author])
     })
+    this.nameAsRoom(session)
+  }
+
+  /**
+   * Give a freshly created root Session its owner's default title
+   * (`{owner} 的会话`). Naming never overrides a standing title and never
+   * fails Session creation.
+   * @param session - newly created root Session.
+   * @param ownerName - display name of the human the Session belongs to.
+   */
+  private nameNewSession(session: Session, ownerName: string): void {
+    const titles = this.ctx.get('sessionTitle')
+    if (titles === undefined) return
+    try {
+      titles.initialize(session, sessionDefaultTitle(ownerName))
+    } catch (_titleFailed) {
+      // The Session already exists; a failed default title must not fail its creation.
+    }
+  }
+
+  /**
+   * Upgrade a root Session's standing default title to its room title
+   * (`{creator} 的协作房间`) once the Session is used as a room. The creator
+   * is the first recorded occupant. A title that is no longer a system
+   * default (fallback, provider, or user) is left untouched, and a failed
+   * title write never fails the committed room action.
+   * @param session - live room Session.
+   */
+  private nameAsRoom(session: Session): void {
+    const titles = this.ctx.get('sessionTitle')
+    if (titles === undefined) return
+    try {
+      const creatorId = this.journal.state(session).occupants[0]
+      if (creatorId === undefined) return
+      const creatorName = this.actorName(creatorId)
+      if (creatorName === undefined) return
+      titles.initialize(session, sessionDefaultTitle(creatorName))
+      titles.replaceDefault(session, roomDefaultTitle(creatorName))
+    } catch (_titleFailed) {
+      // The room action already committed; a failed title must not refuse it.
+    }
+  }
+
+  /**
+   * Resolve the display name of the human who owns one branch of a room.
+   * @param room - live room Session.
+   * @param childId - branch Session identity recorded on the room.
+   * @returns the branch owner's display name, or `undefined` when unresolvable.
+   */
+  private branchOwnerName(room: Session, childId: SessionId): string | undefined {
+    try {
+      const ownerId = this.journal.state(room).childOwners[childId]
+      return ownerId === undefined ? undefined : this.actorName(ownerId)
+    } catch (_projectionFailed) {
+      // Naming degrades to ownerless text; a room read failure is not actionable here.
+      return undefined
+    }
+  }
+
+  /**
+   * Resolve an actor's display name without failing on unknown actors.
+   * @param actorId - actor identity.
+   * @returns the actor's display name, or `undefined` when unresolvable.
+   */
+  private actorName(actorId: ActorId): string | undefined {
+    try {
+      return this.requireActor(actorId).name
+    } catch (_unknownActor) {
+      // Naming degrades to ownerless text; resolution failure is not actionable here.
+      return undefined
+    }
   }
 
   /**
@@ -514,6 +604,7 @@ export class CollaborationService extends Service {
         models: occupancy.models,
       }])
     })
+    this.nameNewSession(session, signed.name)
   }
 
   /**
@@ -1138,7 +1229,7 @@ export class CollaborationService extends Service {
       agentOptions: { provider: recipient.provider, model: recipient.model },
     })
     this.childHandles.set(childId, handle)
-    await this.presentBranch(session, handle.agent.session, recipient)
+    await this.presentBranch(session, handle.agent.session, recipient, author.name)
     await this.journal.appendAndFlush(session, {
       type: 'collaboration/branch-opened',
       data: {
@@ -1166,9 +1257,10 @@ export class CollaborationService extends Service {
     childId: SessionId,
     recipient: ResolvedAiActor,
   ): Promise<Agent> {
+    const ownerName = this.branchOwnerName(room, childId)
     const live = this.ctx.agents.get(childId)
     if (live !== undefined) {
-      this.nameBranch(room, live.session, recipient)
+      this.nameBranch(room, live.session, recipient, ownerName)
       await this.ctx.sessions.flush(live.session)
       return live
     }
@@ -1186,33 +1278,35 @@ export class CollaborationService extends Service {
       )
     }
     this.childHandles.set(childId, handle)
-    await this.presentBranch(room, handle.agent.session, recipient)
+    await this.presentBranch(room, handle.agent.session, recipient, ownerName)
     return handle.agent
   }
 
   /**
-   * Name the branch after the model and attach it after the room in the same Workspace.
+   * Name the branch after its model and owner and attach it after the room in the same Workspace.
    * @param room - live room Session.
    * @param child - newly created branch Session.
    * @param recipient - AI occupant this branch belongs to.
+   * @param ownerName - display name of the human who owns the branch, when known.
    */
-  private async presentBranch(room: Session, child: Session, recipient: ResolvedAiActor): Promise<void> {
-    this.nameBranch(room, child, recipient)
+  private async presentBranch(room: Session, child: Session, recipient: ResolvedAiActor, ownerName?: string): Promise<void> {
+    this.nameBranch(room, child, recipient, ownerName)
     await this.ctx.sessions.flush(child)
     await this.attachBranch(room, child)
   }
 
   /**
-   * Pin a model-named title unless the branch already has a distinct user title.
+   * Pin a `{model} 分叉 · {owner}` title unless the branch already has a distinct user title.
    * @param room - live room Session.
    * @param child - live branch Session.
    * @param recipient - AI occupant this branch belongs to.
+   * @param ownerName - display name of the human who owns the branch, when known.
    */
-  private nameBranch(room: Session, child: Session, recipient: ResolvedAiActor): void {
+  private nameBranch(room: Session, child: Session, recipient: ResolvedAiActor, ownerName?: string): void {
     const titles = this.ctx.get('sessionTitle')
     if (titles === undefined) return
     const roomTitle = titles.get(room)?.title
-    const wanted = branchTitle(roomTitle, recipient.name)
+    const wanted = branchTitle(recipient.name, ownerName)
     const current = titles.get(child)
     if (current?.title === wanted) return
     const copied = current === undefined || current.title === roomTitle

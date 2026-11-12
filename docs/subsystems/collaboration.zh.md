@@ -10,7 +10,7 @@
 
 ## 房间与分支
 
-房间是一个根 Session，其日志承载协作事件（`collaboration/room-created`、`collaboration/occupant-joined`、`collaboration/message`、`collaboration/branch-opened`、`collaboration/actor-invoked`、`collaboration/occupant-removed`）。每位占用者——创建人和每位加入的 actor——都在该根的一个子 Session 中工作，用 `openBranch` 打开；分支继承分叉点之前的房间历史，之后各自演进。分支属主还能在分支内部再分一层：在那里 @ 另一个模型会把帖子追加到分支日志，并以分支为种子打开一个子分支，因此同一套编译与水位机制会把分支当作发起方父级再跑一遍。房间是惰性恢复的：从一个房间未驻活的分支发布时，会先重放房间日志重建活房间再落盘发布，所以冷房间不会拒绝发布。必须跨重启存活的状态都在 Session 日志本身里；服务只保留一份房间到分支归属的 journal 和一份占用缓存，节流清扫会在条目既未持久化又不在线时将其删除。
+房间是一个根 Session，其日志承载协作事件（`collaboration/room-created`、`collaboration/occupant-joined`、`collaboration/message`、`collaboration/branch-opened`、`collaboration/actor-invoked`、`collaboration/occupant-removed`）。每位占用者——创建人和每位加入的 actor——都在该根的一个子 Session 中工作，用 `openBranch` 打开；分支继承分叉点之前的房间历史，之后各自演进。分支属主还能在分支内部再分一层：在那里 @ 另一个模型会把帖子追加到分支日志，并以分支为种子打开一个子分支，因此同一套编译与水位机制会把分支当作发起方父级再跑一遍。房间是惰性恢复的：从一个房间未驻活的分支发布时，会先重放房间日志重建活房间再落盘发布，所以冷房间不会拒绝发布。会话从初始化起就命名：开启 identity 时新根 Session 先叫 `{账号名} 的会话`，被认领或第一次按房间发帖后升级为 `{创建人名} 的协作房间`，每条提及分支则叫 `{模型名} 分叉 · {属主名}`；这些都是 `default` 来源标题，首轮生成仍可替换根会话名与房间名，用户改名永远胜出，分支名保持钉住。必须跨重启存活的状态都在 Session 日志本身里；服务只保留一份房间到分支归属的 journal 和一份占用缓存，节流清扫会在条目既未持久化又不在线时将其删除。
 
 <a id="access"></a>
 
