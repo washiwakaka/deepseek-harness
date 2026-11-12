@@ -288,6 +288,16 @@ describe('collaboration-room browser plugin', () => {
       occurrences: [], attachmentCount: 0, mode: 'queue',
     })).resolves.toBeUndefined()
     expect(b.postBranchMessage).toHaveBeenCalledTimes(1)
+    // A human chip inside a branch is refused with an explanation instead of
+    // falling through to the branch Agent as a plain prompt.
+    await expect(send({
+      sessionId: 'child-a', text: 'bob look', draft: '@Bob look',
+      occurrences: [{ source: 'models', ref: 'bob' }], attachmentCount: 0, mode: 'queue',
+    })).resolves.toEqual({
+      kind: 'error',
+      text: "People can't be mentioned inside a branch — post to the room to reach them.",
+    })
+    expect(b.postBranchMessage).toHaveBeenCalledTimes(1)
     b.postBranchMessage.mockImplementationOnce(async () => ({
       ok: false as const,
       error: new RemoteError('collaboration/failed', 'down', { reason: 'down' }),

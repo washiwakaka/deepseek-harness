@@ -84,7 +84,12 @@ function registerCollaborationUi(ctx: ClientContext): void {
     const onBranch = snapshot.branchIds.includes(request.sessionId)
       || (await branchInfoOf(ctx.remote.collaboration, request.sessionId as SessionId)) !== undefined
     if (onBranch) {
-      if (modelMentions.length === 0) return undefined
+      // Human mentions stay a room-level gesture: refuse the Send with an
+      // explanation instead of letting the chip fall through to the branch
+      // Agent as inert text.
+      if (modelMentions.length < mentions.length) {
+        return { kind: 'error' as const, text: ctx.locale.bind(NS)('send.humanInBranch') }
+      }
       try {
         const posted = await postBranchDraft(
           ctx.remote.collaboration,
