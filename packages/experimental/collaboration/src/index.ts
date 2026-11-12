@@ -26,6 +26,7 @@ import { collectRoomConversation, compileMentionTask, compileRoomContext } from 
 import { CollaborationError } from './error.ts'
 import { CollaborationJournal } from './journal.ts'
 import { childOf, collaborationProjectionDefinition, watermarkOf } from './projection.ts'
+import type { CollaborationProjectionState } from './projection.ts'
 import { ActorId, CollaborationMessageId } from './types.ts'
 import type {
   ActorConfig,
@@ -247,7 +248,9 @@ export class CollaborationService extends Service {
   }
 
   protected async [Service.init](): Promise<void> {
-    const handle = await this.ctx.sessionProjections.register(collaborationProjectionDefinition)
+    const handle = await this.ctx.sessionProjections.register<'collaboration', CollaborationProjectionState>(
+      collaborationProjectionDefinition,
+    )
     this.journal = new CollaborationJournal(this.ctx, handle)
     this.ctx.on('agent/created', async ({ agent, source }) => {
       await this.claimCreatedRoot(agent.session, source)
