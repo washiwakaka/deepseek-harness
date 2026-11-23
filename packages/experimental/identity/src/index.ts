@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-llm'
 import type { PeerId } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
+import type {} from '@deepseek-ai/dsh-host-authentication-token'
 import {
   hashLocalPassword,
   isLocalPassword,
@@ -131,8 +132,8 @@ export class IdentityService extends Service {
     if (!Object.hasOwn(this.ctx.root.reflect.props, 'invocation')) {
       this.ctx.root.accessor('invocation', { get: () => undefined })
     }
-    this.ctx.inject(['connection'], (ctx) => {
-      ctx.connection.registerBrowserPrincipal((id): LocalIdentityPrincipal => ({
+    this.ctx.inject(['authentication.browserPrincipal'], (ctx) => {
+      return ctx['authentication.browserPrincipal'].register((id): LocalIdentityPrincipal => ({
         kind: 'local-identity',
         browserSessionId: id,
       }))
