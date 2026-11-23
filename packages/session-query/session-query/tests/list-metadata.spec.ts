@@ -1,9 +1,10 @@
 /** Session-list metadata is registered and read through the query service lifecycle. */
 
 import { Context } from '@deepseek-ai/cordis'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
-import type { Session } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEventMap } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { TestSessionQueryEngine } from './test-service.ts'
@@ -60,7 +61,10 @@ describe('Session-list metadata', () => {
     expect(initial).toEqual({ blank: true, lastPromptAt: null })
 
     session.append('collaboration/message', {
-      version: 1, id: 'message-1', actorId: 'alice', kind: 'human', name: 'Alice',
+      version: 1,
+      id: brandString<SessionEventMap['collaboration/message']['id']>('message-1'),
+      actorId: brandString<SessionEventMap['collaboration/message']['actorId']>('alice'),
+      kind: 'human', name: 'Alice',
       text: 'hello', mentions: [],
     })
     expect(ctx.sessionQuery.getListMetadata(session)).toEqual({ blank: false, lastPromptAt: null })
