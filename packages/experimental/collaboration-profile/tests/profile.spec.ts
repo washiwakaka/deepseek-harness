@@ -2,16 +2,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import * as yaml from 'js-yaml'
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import { parseEntryYaml } from '@deepseek-ai/cordis-plugin-include'
 
 describe('collaboration bundle', () => {
   it('inserts identity, GitHub method, Host, Remote, and Client UI plugins without an overlay actor list', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
-    const parsed = yaml.load(
-      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
-      { schema: entryListSchema },
-    )
+    const parsed = parseEntryYaml(readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'))
     expect(Array.isArray(parsed)).toBe(true)
     const inserted = (parsed as { insert?: { id?: string; name?: string }[] }[])
       .flatMap(patch => patch.insert ?? [])

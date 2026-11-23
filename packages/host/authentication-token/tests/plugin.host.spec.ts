@@ -1,7 +1,7 @@
 /** Token plugin owns its HTTP exchange and returns existing Connection Peers. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ConnectionAuthentication, type AuthenticationProvider, type HostConnectionHandle, type PeerScope } from '@deepseek-ai/dsh-client-connection'
+import { ConnectionAuthentication, type AuthenticationProvider, type HostConnectionHandle, type PeerId, type PeerScope } from '@deepseek-ai/dsh-client-connection'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { once } from 'node:events'
 import { PassThrough } from 'node:stream'
@@ -113,6 +113,43 @@ it('exchanges a root token, passes other routes on, and keeps browser authentica
   const dropped = response()
   await ctx.waterfall('webserver/request', disconnected, dropped.res, next)
   expect(dropped.state.status).toBeUndefined()
+})
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface PrincipalMap {
+    /** Test-only per-browser caller minted through the principal factory. */
+    'test-browser': { readonly kind: 'test-browser'; readonly browserSessionId: PeerId }
+  }
+}
+
+it('mints one Peer per browser session through a registered principal factory', async () => {
+  const { ctx, providers, createPeer, auth } = await mounted()
+  const mintCookie = async (): Promise<string> => {
+    const url = new URL(auth.authenticatedUrl('http://localhost:3080/'))
+    const reply = response()
+    await ctx.waterfall('webserver/request', request(url.pathname + url.search), reply.res, vi.fn(async () => {}))
+    const cookie = reply.state.headers?.['set-cookie']?.split(';', 1)[0]
+    if (cookie === undefined) throw new Error('fixture cookie missing')
+    return cookie
+  }
+  const first = { headers: { host: 'localhost:3080', cookie: await mintCookie() } }
+  const second = { headers: { host: 'localhost:3080', cookie: await mintCookie() } }
+  const shared = providers[0]!.authenticate(first)
+  expect(providers[0]!.authenticate(second)).toBe(shared)
+  const disposeFactory = ctx['authentication.browserPrincipal'].register(id => ({
+    kind: 'test-browser',
+    browserSessionId: id,
+  }))
+  const firstPeer = providers[0]!.authenticate(first)
+  expect(providers[0]!.authenticate(first)).toBe(firstPeer)
+  expect(firstPeer).not.toBe(shared)
+  const secondPeer = providers[0]!.authenticate(second)
+  expect(secondPeer).not.toBe(firstPeer)
+  expect(firstPeer?.principal.kind).toBe('test-browser')
+  expect(secondPeer?.principal.kind).toBe('test-browser')
+  disposeFactory()
+  expect(providers[0]!.authenticate(first)).toBe(shared)
+  expect(createPeer).toHaveBeenCalledWith({ principal: { kind: 'owner' } })
 })
 
 it('delegates synthetic Worker requests without a native socket', async () => {

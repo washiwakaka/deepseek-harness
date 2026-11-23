@@ -129,8 +129,8 @@ export class IdentityService extends Service {
     this.seedAdmins = seedAdmins
     this.lines = [...seed]
     // Remote calls shadow this with the caller Peer; Host-only reads stay undefined.
-    if (!Object.hasOwn(this.ctx.root.reflect.props, 'invocation')) {
-      this.ctx.root.accessor('invocation', { get: () => undefined })
+    if (!Object.hasOwn(this.ctx[Context.root].reflect.props, 'invocation')) {
+      this.ctx[Context.root].accessor('invocation', { get: () => undefined })
     }
     this.ctx.inject(['authentication.browserPrincipal'], (ctx) => {
       return ctx['authentication.browserPrincipal'].register((id): LocalIdentityPrincipal => ({

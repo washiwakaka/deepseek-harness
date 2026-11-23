@@ -69,7 +69,7 @@ describe('Session creation failures', () => {
     const created = await controller.create({})
     const withPeer = new SessionCommandController(
       ctx.extend({ invocation: { peer: { id: 'peer-1' } } as never }),
-      controllerAgents(ctx, { createSession: publishedSession(ctx, SessionId('session-minted-2')) }),
+      controllerAgents(ctx, { createSession: publishedSession(ctx, brandString<SessionId>('session-minted-2')) }),
       '/default-workspace',
     )
     await withPeer.create({})

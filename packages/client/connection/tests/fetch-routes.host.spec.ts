@@ -169,115 +169,11 @@ describe('Connection in-process Peers', () => {
   })
 })
 
-describe('Connection browser principal factory', () => {
-  it('mints later v3 session Peers with the registered principal', async () => {
-    const ctx = new Context()
-    const sessionId = 'browser-session-1' as PeerId
-    const browserAuth = {
-      authenticateBrowser: () => sessionId,
-      isAuthenticated: () => false,
-      authenticateApi: () => undefined,
-    } as unknown as BrowserAuth
-    const fiber = ctx.plugin((pluginCtx) => {
-      new HostConnectionService(pluginCtx, [], browserAuth)
-    })
-    await fiber.await()
-    const connection = ctx.get('connection') as HostConnectionService
-    const disposeFactory = connection.registerBrowserPrincipal(id => ({
-      kind: 'local-identity',
-      browserSessionId: id,
-    }))
-    const admission = connection.admit({ headers: { host: '127.0.0.1' } })
-    expect('peer' in admission && admission.peer.principal).toEqual({
-      kind: 'local-identity',
-      browserSessionId: sessionId,
-    })
-    expect('peer' in admission && admission.peer.id).toBe(sessionId)
-    disposeFactory()
-    await fiber.dispose()
-  })
-
-  it('remints leftover v1 cookies and owner session Peers with the factory', async () => {
-    const ctx = new Context()
-    const sessionId = 'browser-session-2' as PeerId
-    let leftover = false
-    const browserAuth = {
-      authenticateBrowser: () => leftover ? undefined : sessionId,
-      isAuthenticated: () => leftover,
-      authenticateApi: () => undefined,
-    } as unknown as BrowserAuth
-    const fiber = ctx.plugin((pluginCtx) => {
-      new HostConnectionService(pluginCtx, [], browserAuth)
-    })
-    await fiber.await()
-    const connection = ctx.get('connection') as HostConnectionService
-    const owned = connection.admit({ headers: { host: '127.0.0.1' } })
-    expect('peer' in owned && owned.peer.principal).toEqual({ kind: 'owner' })
-    const disposeFactory = connection.registerBrowserPrincipal(id => ({
-      kind: 'local-identity',
-      browserSessionId: id,
-    }))
-    const reminted = connection.admit({ headers: { host: '127.0.0.1' } })
-    expect('peer' in reminted && reminted.peer.principal).toEqual({
-      kind: 'local-identity',
-      browserSessionId: sessionId,
-    })
-    leftover = true
-    const firstV1 = connection.admit({ headers: { host: '127.0.0.1' } })
-    const secondV1 = connection.admit({ headers: { host: '127.0.0.1' } })
-    expect('peer' in firstV1 && firstV1.peer.principal.kind).toBe('local-identity')
-    expect('peer' in secondV1).toBe(true)
-    if ('peer' in firstV1 && 'peer' in secondV1) expect(firstV1.peer).toBe(secondV1.peer)
-    expect('peer' in firstV1 && firstV1.peer).not.toBe(connection.browserPeer)
-    disposeFactory()
-    await fiber.dispose()
-  })
-
-  it('mints API /connect Peers with the factory', async () => {
-    const ctx = new Context()
-    let apiId: PeerId | undefined
-    const browserAuth = {
-      authenticateBrowser: () => undefined,
-      isAuthenticated: () => false,
-      authenticateApi: () => apiId,
-      authorizeConnect: (
-        _request: unknown,
-        _response: unknown,
-        _secure: boolean,
-        publish: (interactions: 'none') => PeerId,
-      ) => {
-        apiId = publish('none')
-      },
-    } as unknown as BrowserAuth
-    const fiber = ctx.plugin((pluginCtx) => {
-      new HostConnectionService(pluginCtx, [], browserAuth)
-    })
-    await fiber.await()
-    const connection = ctx.get('connection') as HostConnectionService
-    connection.registerBrowserPrincipal(id => ({
-      kind: 'local-identity',
-      browserSessionId: id,
-    }))
-    connection.authorizeConnect(
-      { headers: { host: '127.0.0.1' } } as never,
-      { writeHead() {}, end() {} } as never,
-    )
-    const admission = connection.admit({ headers: { host: '127.0.0.1' } })
-    expect(apiId).toBeDefined()
-    expect('peer' in admission && admission.peer.id).toBe(apiId)
-    expect('peer' in admission && admission.peer.principal).toEqual({
-      kind: 'local-identity',
-      browserSessionId: apiId,
-    })
-    await fiber.dispose()
-  })
-})
-
 describe('Connection exact Fetch local-identity ACL', () => {
   it('allows export only when remoteAccess grants session/page on sessionId', async () => {
     const ctx = new Context()
     const fiber = ctx.plugin((pluginCtx) => {
-      new HostConnectionService(pluginCtx, [], {} as BrowserAuth)
+      new ConnectionAuthentication(pluginCtx); new HostConnectionService(pluginCtx, [])
     })
     await fiber.await()
     const connection = ctx.get('connection') as HostConnectionService

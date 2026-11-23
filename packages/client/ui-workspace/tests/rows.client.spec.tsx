@@ -925,7 +925,7 @@ describe('workspace browser rows', () => {
   it('draws a tee then an elbow for sibling forks', () => {
     const older: SessionNode = {
       id: sid('older'), title: 'Older fork', blank: false, running: false,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+      runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: false,
       parentId: sid('room-s'), parentTitle: 'Room', lineageDepth: 1, lineageGuide: [false],
     }
     const newer: SessionNode = {

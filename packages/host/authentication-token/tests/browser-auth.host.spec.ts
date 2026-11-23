@@ -387,7 +387,7 @@ describe('BrowserAuth', () => {
       'theme=dark', ...[...others].reverse(), previous, 'dsh-auth-fixture=signed', 'flag',
     ].join('; '))
     expect(setCookies(crowded.state)).toEqual([
-      expect.stringMatching(new RegExp(`^${cookieNameOf(previous)}=v1\\..*; Max-Age=2592000; Path=/; `, 'u')),
+      expect.stringMatching(new RegExp(`^${cookieNameOf(previous)}=v3\\..*; Max-Age=2592000; Path=/; `, 'u')),
       expired(others[2]!), expired(others[1]!), expired(others[0]!),
     ])
     expect(auth.isAuthenticated(request('/', '127.0.0.1:3080', { cookie: crowded.cookie }))).toBe(true)

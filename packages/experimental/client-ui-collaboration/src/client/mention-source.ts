@@ -1,6 +1,7 @@
 /** `@` source that lists room humans and Settings models above the built-in reference groups. */
 
-import { IconSparkleRegular, IconUserOutlineRegular, rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconSparkleRegular, IconUserOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { TextSearchIndex } from '@deepseek-ai/dsh-util-text-search'
 import type {
   InputTriggerCandidate,
   InputTriggerSource,
@@ -44,7 +45,8 @@ export function collaborationMentionSource(
           actor.kind === 'human' && actor.id !== snapshot.selectedHumanId),
         ...snapshot.mentionModels,
       ]
-      return rankByName(rows, query).map(actor => mentionCandidate(actor, t))
+      return new TextSearchIndex(rows, actor => ({ fuzzy: [actor.name] })).search(query)
+        .map(actor => mentionCandidate(actor, t))
     },
     onPick({ candidate }) {
       const actor = parseMentionCandidate(candidate.value)

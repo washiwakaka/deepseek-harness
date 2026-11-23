@@ -23,6 +23,11 @@
 - button "更多"
 - list:
   - listitem:
+    - button "查看 协作房间": 协作房间
+    - text: 实验性 用本地账号加入独立业务线，在共享房间里发帖并用 @ 调用模型。
+    - status
+    - switch "启用 协作房间"
+  - listitem:
     - button "查看 语音输入": 语音输入
     - text: 实验性 在本机使用 SenseVoice 转写录音，首次使用需安装依赖。
     - status

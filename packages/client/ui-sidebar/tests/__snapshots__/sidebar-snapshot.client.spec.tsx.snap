@@ -34,6 +34,14 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       </button>
     </div>
     <div
+      class="account"
+    >
+      <div
+        data-slot="sidebar.account"
+        style="display: contents;"
+      />
+    </div>
+    <div
       class="newSessionRow"
     >
       <div
@@ -194,6 +202,14 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       </button>
     </div>
     <div
+      class="account"
+    >
+      <div
+        data-slot="sidebar.account"
+        style="display: contents;"
+      />
+    </div>
+    <div
       class="newSessionRow"
     >
       <div
@@ -323,6 +339,14 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
           style="display: contents;"
         />
       </button>
+    </div>
+    <div
+      class="account"
+    >
+      <div
+        data-slot="sidebar.account"
+        style="display: contents;"
+      />
     </div>
     <div
       class="newSessionRow"
@@ -483,6 +507,14 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
           width="16"
         />
       </button>
+    </div>
+    <div
+      class="account"
+    >
+      <div
+        data-slot="sidebar.account"
+        style="display: contents;"
+      />
     </div>
     <div
       class="newSessionRow"
@@ -649,6 +681,14 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
           width="16"
         />
       </button>
+    </div>
+    <div
+      class="account"
+    >
+      <div
+        data-slot="sidebar.account"
+        style="display: contents;"
+      />
     </div>
     <div
       class="newSessionRow"

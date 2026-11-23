@@ -49,7 +49,21 @@ describe('Session-list metadata', () => {
     const latest = prompt(session)
     expect(read(session)).toEqual({ blank: false, lastPromptAt: latest.time })
     expect(ctx.sessionProjections.snapshot(session).values.sessionListMetadata).toEqual(read(session))
-    expect(ctx.sessionProjections.checkpoint(session).sessionListMetadata?.ver).toBe(1)
+    expect(ctx.sessionProjections.checkpoint(session).sessionListMetadata?.ver).toBe(2)
+  })
+
+  it('counts a collaboration room post as content for a Session that never runs a turn', async () => {
+    const ctx = await setup()
+    await ctx.plugin(TestSessionQueryEngine)
+    const session = ctx.sessions.create()
+    const initial = ctx.sessionQuery.getListMetadata(session)
+    expect(initial).toEqual({ blank: true, lastPromptAt: null })
+
+    session.append('collaboration/message', {
+      version: 1, id: 'message-1', actorId: 'alice', kind: 'human', name: 'Alice',
+      text: 'hello', mentions: [],
+    })
+    expect(ctx.sessionQuery.getListMetadata(session)).toEqual({ blank: false, lastPromptAt: null })
   })
 
   it('releases the projection registration when the query service is disposed', async () => {
