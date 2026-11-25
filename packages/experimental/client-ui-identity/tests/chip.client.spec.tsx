@@ -34,6 +34,7 @@ const t = ((key: string, vars?: Record<string, string>) => {
   if (key === 'lines.title') return 'Business lines'
   if (key === 'lines.empty') return 'No business lines yet.'
   if (key === 'lines.create') return 'Create business line'
+  if (key === 'lines.hint') return 'Fill in both fields. A line id is 2–32 lowercase letters, digits, or hyphens, starting with a letter.'
   if (key === 'lines.id') return 'Line id'
   if (key === 'lines.name') return 'Line name'
   if (key === 'lines.active') return 'Active line'
@@ -221,6 +222,8 @@ describe('AccountChip', () => {
     await vi.waitFor(() => {
       expect(props.leaveLine).toHaveBeenCalledWith('core')
     })
+    expect(screen.getByText('Fill in both fields. A line id is 2–32 lowercase letters, digits, or hyphens, starting with a letter.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Create business line' })).toHaveProperty('disabled', true)
     fireEvent.change(screen.getByRole('textbox', { name: 'Line id' }), { target: { value: 'ops' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'Line name' }), { target: { value: 'Ops' } })
     fireEvent.submit(screen.getByRole('form', { name: 'Create business line' }))

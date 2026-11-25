@@ -332,6 +332,7 @@ function AccountPanel({
               disabled={busy}
               onChange={(event) => { setLineName(event.target.value) }}
             />
+            <span className={css.hint}>{t('lines.hint')}</span>
             <Button type="submit" variant="outline" disabled={busy || lineId.trim() === '' || lineName.trim() === ''}>
               {t('lines.create')}
             </Button>
