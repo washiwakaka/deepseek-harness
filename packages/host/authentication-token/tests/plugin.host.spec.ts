@@ -21,7 +21,7 @@ async function mounted(secure = false, before?: (ctx: Context) => void) {
   const createPeer = vi.fn<HostConnectionHandle['createPeer']>((options) => {
     const signal = new AbortController()
     const peer = {
-      id: `peer-${++sequence}`, principal: options.principal, interactions: options.interactions ?? 'answer', ctx,
+      id: options.id ?? `peer-${++sequence}`, principal: options.principal, interactions: options.interactions ?? 'answer', ctx,
       signal: signal.signal, dispose: async () => { signal.abort() },
     } as PeerScope
     return peer
@@ -147,6 +147,10 @@ it('mints one Peer per browser session through a registered principal factory', 
   expect(secondPeer).not.toBe(firstPeer)
   expect(firstPeer?.principal.kind).toBe('test-browser')
   expect(secondPeer?.principal.kind).toBe('test-browser')
+  // The Peer id is the cookie browser-session id: identity bindings key on it.
+  if (firstPeer?.principal.kind === 'test-browser') expect(firstPeer.id).toBe(firstPeer.principal.browserSessionId)
+  if (secondPeer?.principal.kind === 'test-browser') expect(secondPeer.id).toBe(secondPeer.principal.browserSessionId)
+  expect(firstPeer?.id).not.toBe(secondPeer?.id)
   disposeFactory()
   expect(providers[0]!.authenticate(first)).toBe(shared)
   expect(createPeer).toHaveBeenCalledWith({ principal: { kind: 'owner' } })

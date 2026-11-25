@@ -820,9 +820,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the credential\'s Peer, or the rejection status.',
       },
       {
-        signature: 'createPeer(options: { readonly principal: Principal; readonly interactions?: \'answer\' | \'none\' }): PeerScope',
+        signature: 'createPeer(options: { readonly principal: Principal; readonly interactions?: \'answer\' | \'none\'; readonly id?: PeerId }): PeerScope',
         description: 'Create an independent in-process Peer, disposed with the Context that read `ctx.connection`.',
-        parameters: [{ name: 'options', description: 'fixed principal and interaction participation (default answer).' }],
+        parameters: [{ name: 'options', description: 'fixed principal, interaction participation (default answer), and an optional caller-assigned id.' }],
         returns: 'a new Peer distinct from every other Peer.',
       },
       {

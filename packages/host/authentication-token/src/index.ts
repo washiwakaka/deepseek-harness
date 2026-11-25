@@ -77,7 +77,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
           sessionPeer = undefined
         }
         if (sessionPeer === undefined) {
-          sessionPeer = ctx.connection.createPeer({ principal: browserPrincipal(browserId) })
+          sessionPeer = ctx.connection.createPeer({ principal: browserPrincipal(browserId), id: browserId })
           browserPeers.set(browserId, sessionPeer)
         }
         return sessionPeer

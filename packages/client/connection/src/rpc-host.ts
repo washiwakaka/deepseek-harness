@@ -4,7 +4,7 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remote-access'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import type { PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
+import type { PeerId, PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
 import type { ConnectionInteractions } from './connect-protocol.ts'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ClientRequest, RpcId as RpcIdType } from './rpc.ts'
@@ -126,6 +126,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
   createPeer(options: {
     readonly principal: Principal
     readonly interactions?: ConnectionInteractions
+    readonly id?: PeerId
   }): PeerScope {
     if (this.disposed) throw new Error('connection: cannot create a Peer after disposal')
     return new Peer(this.ctx, options)

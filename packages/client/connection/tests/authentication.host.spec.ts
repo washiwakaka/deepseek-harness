@@ -35,6 +35,12 @@ it('checks each request and takes the first live Peer returned by a provider', (
   expect(first).not.toBe(second)
 })
 
+it('honors a caller-assigned Peer id', () => {
+  const { connection } = setup()
+  const peer = connection.createPeer({ principal: { kind: 'owner' }, id: 'browser-session-1' as Peer['id'] })
+  expect(peer.id).toBe('browser-session-1')
+})
+
 it('continues after failure and removes a registration through its disposer', async () => {
   const { connection, authentication } = setup()
   const peer = connection.createPeer({ principal: { kind: 'owner' } })

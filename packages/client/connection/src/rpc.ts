@@ -1,7 +1,7 @@
 /** Generic unary RPC contracts shared by the Host and Client Connection halves. */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
+import type { PeerId, PeerScope, Principal } from '@deepseek-ai/dsh-typert-protocol'
 
 /** Correlation id minted by a caller and echoed by the Connection response. */
 export type RpcId = Branded<'rpc-id'>
@@ -226,10 +226,14 @@ export interface HostConnectionHandle {
 
   /**
    * Create an independent in-process Peer, disposed with the Context that read `ctx.connection`.
-   * @param options - fixed principal and interaction participation (default answer).
+   * @param options - fixed principal, interaction participation (default answer), and an optional caller-assigned id.
    * @returns a new Peer distinct from every other Peer.
    */
-  createPeer(options: { readonly principal: Principal; readonly interactions?: 'answer' | 'none' }): PeerScope
+  createPeer(options: {
+    readonly principal: Principal
+    readonly interactions?: 'answer' | 'none'
+    readonly id?: PeerId
+  }): PeerScope
 }
 
 /** Transport-independent Fetch handler used by HTTP and worker carriers. */
