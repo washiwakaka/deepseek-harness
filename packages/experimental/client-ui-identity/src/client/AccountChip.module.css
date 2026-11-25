@@ -39,6 +39,20 @@
   white-space: nowrap;
 }
 
+/* Account management stacks several sections and long user/model lists:
+   a wider card than the default sign-in dialog, with the content scrolling
+   inside the card so the header and close control stay reachable. */
+.accountDialog {
+  width: min(560px, 100%);
+  max-height: 100%;
+}
+
+.accountContent {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .form {
   display: flex;
   flex-direction: column;

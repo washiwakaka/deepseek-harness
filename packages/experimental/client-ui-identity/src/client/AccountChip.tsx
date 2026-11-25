@@ -424,6 +424,9 @@ export function AccountChip({
         onClose={() => { setOpen(false) }}
         title={t('modal.title')}
         closeLabel={t('modal.close')}
+        {...(current !== undefined
+          ? { className: css.accountDialog, contentClassName: css.accountContent }
+          : {})}
         description={current === undefined ? t('modal.description') : t('modal.signedDescription')}
       >
         {current !== undefined
